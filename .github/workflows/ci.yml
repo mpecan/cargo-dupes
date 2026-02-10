@@ -42,19 +42,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test
 
-  test-msrv:
-    name: Test (MSRV 1.85)
-    runs-on: ubuntu-latest
-    env:
-      CARGO_HUSKY_DONT_INSTALL_HOOKS: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.85"
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo test
-
   conventional-commits:
     name: Conventional Commits
     runs-on: ubuntu-latest

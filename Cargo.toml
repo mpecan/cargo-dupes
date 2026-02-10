@@ -10,7 +10,7 @@ readme = "README.md"
 keywords = ["cargo", "duplicates", "code-quality", "lint", "ast"]
 categories = ["development-tools::cargo-plugins", "development-tools"]
 authors = ["Matjaz Domen Pecan <matjaz.pecan@gmail.com>"]
-rust-version = "1.85"
+rust-version = "1.93"
 
 [dependencies]
 syn = { version = "2", features = ["full", "visit", "extra-traits"] }
