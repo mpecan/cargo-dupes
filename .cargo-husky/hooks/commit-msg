@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+if command -v cog >/dev/null 2>&1; then
+    cog verify --file "$1"
+else
+    commit_msg=$(head -1 "$1")
+    if ! echo "$commit_msg" | grep -qE '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?(!)?: .+'; then
+        echo "ERROR: Commit message does not follow Conventional Commits format."
+        echo "Expected: <type>[optional scope]: <description>"
+        echo "Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+        echo "Install cocogitto for better validation: cargo install cocogitto"
+        exit 1
+    fi
+fi

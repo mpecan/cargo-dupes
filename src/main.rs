@@ -14,6 +14,7 @@ use cargo_dupes::output::text::TextReporter;
 #[derive(Parser)]
 #[command(
     name = "cargo-dupes",
+    version,
     about = "Detect duplicate code in Rust codebases"
 )]
 struct Cli {

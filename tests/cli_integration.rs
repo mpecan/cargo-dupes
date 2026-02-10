@@ -1,4 +1,4 @@
-use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::*;
 use std::path::PathBuf;
 
@@ -9,8 +9,8 @@ fn fixture_path(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn cargo_dupes() -> Command {
-    Command::cargo_bin("cargo-dupes").unwrap()
+fn cargo_dupes() -> assert_cmd::Command {
+    cargo_bin_cmd!("cargo-dupes")
 }
 
 // ── Report subcommand ────────────────────────────────────────────────────
