@@ -205,10 +205,8 @@ fn main() {
             max_exact_percent,
             max_near_percent,
         } => {
-            let max_exact = max_exact.or(config.max_exact_duplicates).unwrap_or(0);
-            let max_near = max_near
-                .or(config.max_near_duplicates)
-                .unwrap_or(usize::MAX);
+            let max_exact = max_exact.or(config.max_exact_duplicates);
+            let max_near = max_near.or(config.max_near_duplicates);
             let max_exact_pct = max_exact_percent.or(config.max_exact_percent);
             let max_near_pct = max_near_percent.or(config.max_near_percent);
 
@@ -216,11 +214,13 @@ fn main() {
 
             let mut failed = false;
 
-            if result.stats.exact_duplicate_groups > max_exact {
+            if let Some(threshold) = max_exact
+                && result.stats.exact_duplicate_groups > threshold
+            {
                 writeln!(
                     writer,
                     "\nCheck FAILED: {} exact duplicate groups (max: {})",
-                    result.stats.exact_duplicate_groups, max_exact
+                    result.stats.exact_duplicate_groups, threshold
                 )
                 .unwrap();
                 reporter
@@ -229,11 +229,13 @@ fn main() {
                 failed = true;
             }
 
-            if result.stats.near_duplicate_groups > max_near {
+            if let Some(threshold) = max_near
+                && result.stats.near_duplicate_groups > threshold
+            {
                 writeln!(
                     writer,
                     "\nCheck FAILED: {} near duplicate groups (max: {})",
-                    result.stats.near_duplicate_groups, max_near
+                    result.stats.near_duplicate_groups, threshold
                 )
                 .unwrap();
                 reporter

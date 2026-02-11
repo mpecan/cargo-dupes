@@ -71,6 +71,20 @@ fn stats_shows_summary() {
 // ── Check subcommand ────────────────────────────────────────────────────
 
 #[test]
+fn check_no_thresholds_passes_with_duplicates() {
+    // With no thresholds set, check should pass even when duplicates exist
+    cargo_dupes()
+        .args([
+            "--path",
+            fixture_path("exact_dupes").to_str().unwrap(),
+            "check",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Check passed"));
+}
+
+#[test]
 fn check_fails_with_duplicates() {
     cargo_dupes()
         .args([
