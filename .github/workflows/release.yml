@@ -44,10 +44,10 @@ jobs:
 
       - name: Bump version
         id: bump
-        uses: cocogitto/cocogitto-action@v3
+        uses: cocogitto/cocogitto-action@v4
         with:
-          bump: true
-          bump-type: ${{ github.event.inputs.bump != 'auto' && github.event.inputs.bump || '' }}
+          command: bump
+          args: ${{ github.event.inputs.bump != 'auto' && format('--{0}', github.event.inputs.bump) || '--auto' }}
           git-user: "github-actions[bot]"
           git-user-email: "github-actions[bot]@users.noreply.github.com"
 
@@ -56,15 +56,15 @@ jobs:
 
       - name: Generate changelog
         id: changelog
-        uses: cocogitto/cocogitto-action@v3
+        uses: cocogitto/cocogitto-action@v4
         with:
-          changelog: true
+          command: changelog
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.bump.outputs.version }}
-          body: ${{ steps.changelog.outputs.changelog }}
+          tag_name: ${{ steps.bump.outputs.version }}
+          body: ${{ steps.changelog.outputs.stdout }}
 
   publish:
     name: Publish to crates.io
