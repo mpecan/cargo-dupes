@@ -235,7 +235,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("test.rs");
         fs::write(&file, code).unwrap();
-        parser::parse_file(&file, 1, 0).unwrap()
+        parser::parse_file(&file, 1, 0, false).unwrap()
     }
 
     #[test]

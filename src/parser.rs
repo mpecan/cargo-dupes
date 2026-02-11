@@ -41,11 +41,27 @@ pub struct CodeUnit {
     pub node_count: usize,
 }
 
+/// Check if attributes contain `#[test]`.
+fn has_test_attr(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(|attr| attr.path().is_ident("test"))
+}
+
+/// Check if attributes contain `#[cfg(test)]`.
+fn has_cfg_test_attr(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        attr.path().is_ident("cfg")
+            && attr
+                .parse_args::<syn::Ident>()
+                .is_ok_and(|ident| ident == "test")
+    })
+}
+
 /// Extracts code units from a syn file by visiting the AST.
 struct CodeUnitExtractor {
     file: PathBuf,
     min_node_count: usize,
     min_line_count: usize,
+    exclude_tests: bool,
     units: Vec<CodeUnit>,
     /// Track current impl block context for method naming.
     current_impl: Option<String>,
@@ -54,11 +70,17 @@ struct CodeUnitExtractor {
 }
 
 impl CodeUnitExtractor {
-    fn new(file: PathBuf, min_node_count: usize, min_line_count: usize) -> Self {
+    fn new(
+        file: PathBuf,
+        min_node_count: usize,
+        min_line_count: usize,
+        exclude_tests: bool,
+    ) -> Self {
         Self {
             file,
             min_node_count,
             min_line_count,
+            exclude_tests,
             units: Vec::new(),
             current_impl: None,
             in_trait_impl: false,
@@ -99,6 +121,10 @@ impl CodeUnitExtractor {
 
 impl<'ast> Visit<'ast> for CodeUnitExtractor {
     fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
+        if self.exclude_tests && (has_test_attr(&node.attrs) || has_cfg_test_attr(&node.attrs)) {
+            return;
+        }
+
         let name = node.sig.ident.to_string();
         let line_start = node.sig.ident.span().start().line;
         let line_end = node.block.brace_token.span.close().end().line;
@@ -116,7 +142,18 @@ impl<'ast> Visit<'ast> for CodeUnitExtractor {
         syn::visit::visit_item_fn(self, node);
     }
 
+    fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
+        if self.exclude_tests && has_cfg_test_attr(&node.attrs) {
+            return;
+        }
+        syn::visit::visit_item_mod(self, node);
+    }
+
     fn visit_item_impl(&mut self, node: &'ast syn::ItemImpl) {
+        if self.exclude_tests && has_cfg_test_attr(&node.attrs) {
+            return;
+        }
+
         let type_name = quote_type(&node.self_ty);
         let is_trait_impl = node.trait_.is_some();
         let trait_name = node
@@ -214,6 +251,7 @@ pub fn parse_file(
     path: &Path,
     min_node_count: usize,
     min_line_count: usize,
+    exclude_tests: bool,
 ) -> Result<Vec<CodeUnit>, String> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
@@ -221,7 +259,12 @@ pub fn parse_file(
     let file = syn::parse_file(&content)
         .map_err(|e| format!("Failed to parse {}: {}", path.display(), e))?;
 
-    let mut extractor = CodeUnitExtractor::new(path.to_path_buf(), min_node_count, min_line_count);
+    let mut extractor = CodeUnitExtractor::new(
+        path.to_path_buf(),
+        min_node_count,
+        min_line_count,
+        exclude_tests,
+    );
     extractor.visit_file(&file);
 
     Ok(extractor.units)
@@ -232,12 +275,13 @@ pub fn parse_files(
     paths: &[PathBuf],
     min_node_count: usize,
     min_line_count: usize,
+    exclude_tests: bool,
 ) -> (Vec<CodeUnit>, Vec<String>) {
     let mut units = Vec::new();
     let mut warnings = Vec::new();
 
     for path in paths {
-        match parse_file(path, min_node_count, min_line_count) {
+        match parse_file(path, min_node_count, min_line_count, exclude_tests) {
             Ok(file_units) => units.extend(file_units),
             Err(warning) => warnings.push(warning),
         }
@@ -256,7 +300,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("test.rs");
         fs::write(&file, code).unwrap();
-        parse_file(&file, min_nodes, 0).unwrap()
+        parse_file(&file, min_nodes, 0, false).unwrap()
     }
 
     #[test]
@@ -410,7 +454,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("broken.rs");
         fs::write(&file, "fn broken( { }").unwrap();
-        let result = parse_file(&file, 1, 0);
+        let result = parse_file(&file, 1, 0, false);
         assert!(result.is_err());
     }
 
@@ -421,7 +465,7 @@ mod tests {
         let bad = tmp.path().join("bad.rs");
         fs::write(&good, "fn good() { let x = 1; }").unwrap();
         fs::write(&bad, "fn bad( {").unwrap();
-        let (units, warnings) = parse_files(&[good, bad], 1, 0);
+        let (units, warnings) = parse_files(&[good, bad], 1, 0, false);
         assert!(!units.is_empty());
         assert_eq!(warnings.len(), 1);
     }
@@ -494,15 +538,167 @@ fn longer(x: i32) -> i32 {
         fs::write(&file, code).unwrap();
 
         // With min_line_count=0, both functions should appear
-        let units_all = parse_file(&file, 1, 0).unwrap();
+        let units_all = parse_file(&file, 1, 0, false).unwrap();
         assert!(units_all.len() >= 2);
 
         // With min_line_count=5, only the longer function should pass
-        let units_filtered = parse_file(&file, 1, 5).unwrap();
+        let units_filtered = parse_file(&file, 1, 5, false).unwrap();
         assert!(units_filtered.len() < units_all.len());
         for unit in &units_filtered {
             let lines = unit.line_end.saturating_sub(unit.line_start) + 1;
             assert!(lines >= 5, "unit {} has only {lines} lines", unit.name);
         }
+    }
+
+    fn write_and_parse_exclude(code: &str, min_nodes: usize, exclude_tests: bool) -> Vec<CodeUnit> {
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("test.rs");
+        fs::write(&file, code).unwrap();
+        parse_file(&file, min_nodes, 0, exclude_tests).unwrap()
+    }
+
+    #[test]
+    fn test_has_test_attr() {
+        let file: syn::File = syn::parse_str(
+            r#"
+            #[test]
+            fn my_test() {}
+            fn normal() {}
+            "#,
+        )
+        .unwrap();
+
+        let items = &file.items;
+        if let syn::Item::Fn(f) = &items[0] {
+            assert!(has_test_attr(&f.attrs));
+        } else {
+            panic!("expected function");
+        }
+        if let syn::Item::Fn(f) = &items[1] {
+            assert!(!has_test_attr(&f.attrs));
+        } else {
+            panic!("expected function");
+        }
+    }
+
+    #[test]
+    fn test_has_cfg_test_attr() {
+        let file: syn::File = syn::parse_str(
+            r#"
+            #[cfg(test)]
+            mod tests {}
+            mod normal {}
+            "#,
+        )
+        .unwrap();
+
+        let items = &file.items;
+        if let syn::Item::Mod(m) = &items[0] {
+            assert!(has_cfg_test_attr(&m.attrs));
+        } else {
+            panic!("expected module");
+        }
+        if let syn::Item::Mod(m) = &items[1] {
+            assert!(!has_cfg_test_attr(&m.attrs));
+        } else {
+            panic!("expected module");
+        }
+    }
+
+    #[test]
+    fn exclude_tests_skips_test_functions() {
+        let code = r#"
+            fn production(x: i32) -> i32 {
+                let y = x + 1;
+                y * 2
+            }
+            #[test]
+            fn my_test() {
+                let x = 1;
+                let y = x + 1;
+                assert_eq!(y, 2);
+            }
+        "#;
+
+        let with_tests = write_and_parse_exclude(code, 1, false);
+        let without_tests = write_and_parse_exclude(code, 1, true);
+
+        assert!(with_tests.len() > without_tests.len());
+        assert!(without_tests.iter().all(|u| u.name != "my_test"));
+    }
+
+    #[test]
+    fn exclude_tests_skips_cfg_test_modules() {
+        let code = r#"
+            fn production(x: i32) -> i32 {
+                let y = x + 1;
+                y * 2
+            }
+
+            #[cfg(test)]
+            mod tests {
+                fn helper(x: i32) -> i32 {
+                    let y = x + 1;
+                    y * 2
+                }
+            }
+        "#;
+
+        let with_tests = write_and_parse_exclude(code, 1, false);
+        let without_tests = write_and_parse_exclude(code, 1, true);
+
+        assert!(with_tests.len() > without_tests.len());
+        assert!(without_tests.iter().all(|u| u.name != "helper"));
+    }
+
+    #[test]
+    fn exclude_tests_false_keeps_all() {
+        let code = r#"
+            fn production(x: i32) -> i32 {
+                let y = x + 1;
+                y * 2
+            }
+            #[test]
+            fn my_test() {
+                let x = 1;
+                let y = x + 1;
+                assert_eq!(y, 2);
+            }
+        "#;
+
+        let all_units = write_and_parse_exclude(code, 1, false);
+        assert!(all_units.iter().any(|u| u.name == "my_test"));
+    }
+
+    #[test]
+    fn exclude_tests_skips_cfg_test_impl_blocks() {
+        let code = r#"
+            struct Foo;
+
+            impl Foo {
+                fn production(&self) -> i32 {
+                    let x = 42;
+                    x + 1
+                }
+            }
+
+            #[cfg(test)]
+            impl Foo {
+                fn test_helper(&self) -> i32 {
+                    let x = 42;
+                    x + 1
+                }
+            }
+        "#;
+
+        let with_tests = write_and_parse_exclude(code, 1, false);
+        let without_tests = write_and_parse_exclude(code, 1, true);
+
+        assert!(with_tests.len() > without_tests.len());
+        assert!(
+            without_tests
+                .iter()
+                .all(|u| !u.name.contains("test_helper"))
+        );
     }
 }
