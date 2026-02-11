@@ -403,6 +403,61 @@ fn exclude_tests_text_report() {
         .stdout(predicate::str::contains("Group 1"));
 }
 
+// ── Percentage thresholds ────────────────────────────────────────────────
+
+#[test]
+fn check_fails_with_percentage_threshold_exceeded() {
+    cargo_dupes()
+        .args([
+            "--path",
+            fixture_path("exact_dupes").to_str().unwrap(),
+            "check",
+            "--max-exact",
+            "100",
+            "--max-exact-percent",
+            "0.0",
+        ])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("Check FAILED"))
+        .stdout(predicate::str::contains("exact duplicate lines"));
+}
+
+#[test]
+fn check_passes_with_generous_percentage_threshold() {
+    cargo_dupes()
+        .args([
+            "--path",
+            fixture_path("exact_dupes").to_str().unwrap(),
+            "check",
+            "--max-exact",
+            "100",
+            "--max-exact-percent",
+            "100.0",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Check passed"));
+}
+
+#[test]
+fn check_absolute_passes_percentage_fails() {
+    // Absolute threshold is generous (passes), but percentage is strict (fails)
+    cargo_dupes()
+        .args([
+            "--path",
+            fixture_path("exact_dupes").to_str().unwrap(),
+            "check",
+            "--max-exact",
+            "100",
+            "--max-exact-percent",
+            "0.0",
+        ])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("Check FAILED"));
+}
+
 #[test]
 fn near_dupes_detected() {
     cargo_dupes()

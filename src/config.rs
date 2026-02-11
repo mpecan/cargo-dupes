@@ -15,6 +15,10 @@ pub struct Config {
     pub max_exact_duplicates: Option<usize>,
     /// Exit code threshold: fail if near duplicate count exceeds this.
     pub max_near_duplicates: Option<usize>,
+    /// Exit code threshold: fail if exact duplicate percentage exceeds this.
+    pub max_exact_percent: Option<f64>,
+    /// Exit code threshold: fail if near duplicate percentage exceeds this.
+    pub max_near_percent: Option<f64>,
     /// Minimum number of source lines for a code unit to be analyzed.
     pub min_lines: usize,
     /// Exclude test code (#[test] functions and #[cfg(test)] modules).
@@ -31,6 +35,8 @@ impl Default for Config {
             exclude: Vec::new(),
             max_exact_duplicates: None,
             max_near_duplicates: None,
+            max_exact_percent: None,
+            max_near_percent: None,
             min_lines: 0,
             exclude_tests: false,
             root: PathBuf::from("."),
@@ -47,6 +53,8 @@ struct FileConfig {
     exclude: Option<Vec<String>>,
     max_exact_duplicates: Option<usize>,
     max_near_duplicates: Option<usize>,
+    max_exact_percent: Option<f64>,
+    max_near_percent: Option<f64>,
     min_lines: Option<usize>,
     exclude_tests: Option<bool>,
 }
@@ -121,6 +129,12 @@ impl Config {
         }
         if let Some(v) = fc.max_near_duplicates {
             self.max_near_duplicates = Some(v);
+        }
+        if let Some(v) = fc.max_exact_percent {
+            self.max_exact_percent = Some(v);
+        }
+        if let Some(v) = fc.max_near_percent {
+            self.max_near_percent = Some(v);
         }
         if let Some(v) = fc.min_lines {
             self.min_lines = v;
@@ -261,5 +275,21 @@ mod tests {
         .unwrap();
         let config = Config::load(tmp.path());
         assert_eq!(config.min_lines, 5);
+    }
+
+    #[test]
+    fn config_with_percentage_thresholds() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("dupes.toml"),
+            r#"
+            max_exact_percent = 5.0
+            max_near_percent = 10.5
+            "#,
+        )
+        .unwrap();
+        let config = Config::load(tmp.path());
+        assert_eq!(config.max_exact_percent, Some(5.0));
+        assert_eq!(config.max_near_percent, Some(10.5));
     }
 }
