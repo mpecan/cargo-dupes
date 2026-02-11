@@ -1,18 +1,9 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      bump:
-        description: "Bump type (auto uses conventional commits to determine)"
-        required: true
-        default: "auto"
-        type: choice
-        options:
-          - auto
-          - patch
-          - minor
-          - major
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: write
@@ -21,59 +12,11 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  release:
-    name: Bump version & tag
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.bump.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-edit
-        run: cargo install cargo-edit
-
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Bump version
-        id: bump
-        uses: cocogitto/cocogitto-action@v4
-        with:
-          command: bump
-          args: ${{ github.event.inputs.bump != 'auto' && format('--{0}', github.event.inputs.bump) || '--auto' }}
-          git-user: "github-actions[bot]"
-          git-user-email: "github-actions[bot]@users.noreply.github.com"
-
-      - name: Push changes and tag
-        run: git push origin main --follow-tags
-
-      - name: Generate changelog
-        id: changelog
-        uses: cocogitto/cocogitto-action@v4
-        with:
-          command: changelog
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.bump.outputs.version }}
-          body: ${{ steps.changelog.outputs.stdout }}
-
   publish:
     name: Publish to crates.io
-    needs: release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main
 
       - uses: dtolnay/rust-toolchain@stable
 
