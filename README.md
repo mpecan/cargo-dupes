@@ -68,6 +68,7 @@ Near duplicates:  0 groups (0 code units)
 
 Duplicated lines (exact): 18
 Duplicated lines (near):  0
+Duplication: 50.0% exact, 0.0% near (of 36 total lines)
 
 Exact Duplicates
 ================
@@ -90,6 +91,7 @@ Near duplicates:  0 groups (0 code units)
 
 Duplicated lines (exact): 18
 Duplicated lines (near):  0
+Duplication: 50.0% exact, 0.0% near (of 36 total lines)
 ```
 
 **JSON output:**
@@ -98,12 +100,15 @@ Duplicated lines (near):  0
 $ cargo dupes --format json stats
 {
   "total_code_units": 4,
+  "total_lines": 36,
   "exact_duplicate_groups": 1,
   "exact_duplicate_units": 2,
   "near_duplicate_groups": 0,
   "near_duplicate_units": 0,
   "exact_duplicate_lines": 18,
-  "near_duplicate_lines": 0
+  "near_duplicate_lines": 0,
+  "exact_duplicate_percent": 50.0,
+  "near_duplicate_percent": 0.0
 }
 ```
 
@@ -113,6 +118,13 @@ $ cargo dupes --format json stats
 $ cargo dupes check --max-exact 0
 # Exits with code 1 if exact duplicate groups > 0
 # Exits with code 0 if within thresholds
+```
+
+**CI check with percentage thresholds (fail if >5% of lines are exact duplicates):**
+
+```sh
+$ cargo dupes check --max-exact-percent 5.0
+# Exits with code 1 if exact duplicate lines exceed 5% of total lines
 ```
 
 **Exclude test code (inline `#[cfg(test)]` modules and `#[test]` functions):**
@@ -157,6 +169,8 @@ exclude = ["tests", "benches"]
 exclude_tests = true
 max_exact_duplicates = 0
 max_near_duplicates = 10
+max_exact_percent = 5.0
+max_near_percent = 10.0
 ```
 
 ### `Cargo.toml`
@@ -179,6 +193,8 @@ exclude = ["tests"]
 | `exclude_tests` | `false` | Exclude `#[test]` functions and `#[cfg(test)]` modules from analysis. |
 | `max_exact_duplicates` | `None` | For `check` subcommand: maximum allowed exact duplicate groups. |
 | `max_near_duplicates` | `None` | For `check` subcommand: maximum allowed near-duplicate groups. |
+| `max_exact_percent` | `None` | For `check` subcommand: maximum allowed exact duplicate line percentage. |
+| `max_near_percent` | `None` | For `check` subcommand: maximum allowed near-duplicate line percentage. |
 
 ## Ignoring Duplicates
 
@@ -208,7 +224,7 @@ Use the `check` subcommand in CI pipelines:
 ```yaml
 # GitHub Actions example
 - name: Check for code duplication
-  run: cargo dupes check --max-exact 0
+  run: cargo dupes check --max-exact 0 --max-exact-percent 5.0
 ```
 
 Exit codes:
@@ -237,7 +253,7 @@ The scanner automatically:
 
 ```sh
 cargo build          # Build
-cargo test           # Run all 140 tests
+cargo test           # Run all 147 tests
 cargo clippy         # Lint check
 cargo fmt --check    # Format check
 ```

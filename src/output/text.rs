@@ -4,6 +4,18 @@ use std::path::Path;
 use crate::grouper::{DuplicateGroup, DuplicationStats};
 use crate::output::Reporter;
 
+fn format_with_commas(n: usize) -> String {
+    let s = n.to_string();
+    let mut result = String::with_capacity(s.len() + s.len() / 3);
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
+            result.push(',');
+        }
+        result.push(c);
+    }
+    result
+}
+
 pub struct TextReporter {
     /// Base path for displaying relative paths.
     pub base_path: Option<std::path::PathBuf>,
@@ -54,6 +66,13 @@ impl Reporter for TextReporter {
             writer,
             "Duplicated lines (near):  {}",
             stats.near_duplicate_lines
+        )?;
+        writeln!(
+            writer,
+            "Duplication: {:.1}% exact, {:.1}% near (of {} total lines)",
+            stats.exact_duplicate_percent(),
+            stats.near_duplicate_percent(),
+            format_with_commas(stats.total_lines),
         )?;
         Ok(())
     }
@@ -162,6 +181,7 @@ mod tests {
         let reporter = TextReporter::new(None);
         let stats = DuplicationStats {
             total_code_units: 100,
+            total_lines: 1000,
             exact_duplicate_groups: 5,
             exact_duplicate_units: 12,
             near_duplicate_groups: 3,

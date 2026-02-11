@@ -53,7 +53,7 @@ pub fn analyze(config: &Config) -> error::Result<AnalysisResult> {
     let near_groups = ignore::filter_ignored(near_groups, &ignore_file);
 
     // 6. Compute stats
-    let stats = grouper::compute_stats(units.len(), &exact_groups, &near_groups);
+    let stats = grouper::compute_stats(&units, &exact_groups, &near_groups);
 
     Ok(AnalysisResult {
         stats,

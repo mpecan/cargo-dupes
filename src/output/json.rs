@@ -25,12 +25,15 @@ impl JsonReporter {
 #[derive(serde::Serialize)]
 struct JsonStats {
     total_code_units: usize,
+    total_lines: usize,
     exact_duplicate_groups: usize,
     exact_duplicate_units: usize,
     near_duplicate_groups: usize,
     near_duplicate_units: usize,
     exact_duplicate_lines: usize,
     near_duplicate_lines: usize,
+    exact_duplicate_percent: f64,
+    near_duplicate_percent: f64,
 }
 
 #[derive(serde::Serialize)]
@@ -54,12 +57,15 @@ impl Reporter for JsonReporter {
     fn report_stats(&self, stats: &DuplicationStats, writer: &mut dyn io::Write) -> io::Result<()> {
         let json_stats = JsonStats {
             total_code_units: stats.total_code_units,
+            total_lines: stats.total_lines,
             exact_duplicate_groups: stats.exact_duplicate_groups,
             exact_duplicate_units: stats.exact_duplicate_units,
             near_duplicate_groups: stats.near_duplicate_groups,
             near_duplicate_units: stats.near_duplicate_units,
             exact_duplicate_lines: stats.exact_duplicate_lines,
             near_duplicate_lines: stats.near_duplicate_lines,
+            exact_duplicate_percent: stats.exact_duplicate_percent(),
+            near_duplicate_percent: stats.near_duplicate_percent(),
         };
         let json = serde_json::to_string_pretty(&json_stats).map_err(io::Error::other)?;
         writeln!(writer, "{json}")
@@ -129,6 +135,7 @@ mod tests {
         let reporter = JsonReporter::new(None);
         let stats = DuplicationStats {
             total_code_units: 50,
+            total_lines: 500,
             exact_duplicate_groups: 3,
             exact_duplicate_units: 8,
             near_duplicate_groups: 2,

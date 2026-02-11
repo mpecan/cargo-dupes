@@ -10,7 +10,7 @@
 
 ```sh
 cargo build          # Build
-cargo test           # Run all 140 tests (119 unit + 21 integration)
+cargo test           # Run all 147 tests (123 unit + 24 integration)
 cargo clippy         # Lint (must be clean)
 cargo fmt --check    # Format check
 ```
@@ -55,14 +55,14 @@ This enables `derive(Hash)` for fingerprinting and recursive tree comparison for
 
 - `CodeUnit` — A function, method, closure, or impl block extracted from source. Contains normalized signature + body, fingerprint, file location, line numbers.
 - `DuplicateGroup` — A group of code units with the same fingerprint (exact) or above the similarity threshold (near).
-- `DuplicationStats` — Statistics including group/unit counts and duplicated line counts (exact and near).
-- `Config` — All analysis parameters (min_nodes, min_lines, similarity_threshold, excludes, exclude_tests, CI thresholds).
+- `DuplicationStats` — Statistics including group/unit counts, duplicated line counts (exact and near), total lines, and percentage helpers.
+- `Config` — All analysis parameters (min_nodes, min_lines, similarity_threshold, excludes, exclude_tests, CI thresholds including percentage-based).
 
 ## CLI Subcommands
 
 - **`report`** (default) — Full report: stats + exact groups + near groups
 - **`stats`** — Summary statistics only
-- **`check`** — CI mode. Exits 1 if `--max-exact` or `--max-near` thresholds exceeded. Exits 0 on pass. Exits 2 on errors.
+- **`check`** — CI mode. Exits 1 if `--max-exact`, `--max-near`, `--max-exact-percent`, or `--max-near-percent` thresholds exceeded. Exits 0 on pass. Exits 2 on errors.
 - **`ignore <fingerprint>`** — Add fingerprint to `.dupes-ignore.toml`
 - **`ignored`** — List all ignored fingerprints
 

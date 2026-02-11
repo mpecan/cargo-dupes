@@ -19,12 +19,33 @@ pub struct DuplicateGroup {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DuplicationStats {
     pub total_code_units: usize,
+    pub total_lines: usize,
     pub exact_duplicate_groups: usize,
     pub exact_duplicate_units: usize,
     pub near_duplicate_groups: usize,
     pub near_duplicate_units: usize,
     pub exact_duplicate_lines: usize,
     pub near_duplicate_lines: usize,
+}
+
+impl DuplicationStats {
+    /// Percentage of total lines that are exact duplicates.
+    pub fn exact_duplicate_percent(&self) -> f64 {
+        if self.total_lines == 0 {
+            0.0
+        } else {
+            self.exact_duplicate_lines as f64 / self.total_lines as f64 * 100.0
+        }
+    }
+
+    /// Percentage of total lines that are near duplicates.
+    pub fn near_duplicate_percent(&self) -> f64 {
+        if self.total_lines == 0 {
+            0.0
+        } else {
+            self.near_duplicate_lines as f64 / self.total_lines as f64 * 100.0
+        }
+    }
 }
 
 /// Group code units by exact fingerprint match.
@@ -192,12 +213,18 @@ fn group_line_count(group: &DuplicateGroup) -> usize {
 
 /// Compute duplication statistics.
 pub fn compute_stats(
-    total_units: usize,
+    units: &[CodeUnit],
     exact_groups: &[DuplicateGroup],
     near_groups: &[DuplicateGroup],
 ) -> DuplicationStats {
+    let total_lines: usize = units
+        .iter()
+        .map(|u| u.line_end.saturating_sub(u.line_start) + 1)
+        .sum();
+
     DuplicationStats {
-        total_code_units: total_units,
+        total_code_units: units.len(),
+        total_lines,
         exact_duplicate_groups: exact_groups.len(),
         exact_duplicate_units: exact_groups.iter().map(|g| g.members.len()).sum(),
         near_duplicate_groups: near_groups.len(),
@@ -323,10 +350,11 @@ mod tests {
             "#,
         );
         let exact = group_exact_duplicates(&units);
-        let stats = compute_stats(units.len(), &exact, &[]);
+        let stats = compute_stats(&units, &exact, &[]);
         assert_eq!(stats.total_code_units, 3);
         assert_eq!(stats.exact_duplicate_groups, 1);
         assert_eq!(stats.exact_duplicate_units, 2);
+        assert!(stats.total_lines > 0);
     }
 
     #[test]
@@ -388,13 +416,19 @@ mod tests {
 
     #[test]
     fn stats_with_near_duplicates() {
+        let units = make_units(
+            r#"
+            fn a(x: i32) -> i32 { x + 1 }
+            fn b(y: i32) -> i32 { y * 2 }
+            "#,
+        );
         let near_group = DuplicateGroup {
             fingerprint: None,
-            members: vec![], // fake empty for stats test
+            members: vec![],
             similarity: 0.85,
         };
-        let stats = compute_stats(10, &[], &[near_group]);
-        assert_eq!(stats.total_code_units, 10);
+        let stats = compute_stats(&units, &[], &[near_group]);
+        assert_eq!(stats.total_code_units, units.len());
         assert_eq!(stats.near_duplicate_groups, 1);
     }
 
@@ -413,8 +447,58 @@ mod tests {
             "#,
         );
         let exact = group_exact_duplicates(&units);
-        let stats = compute_stats(units.len(), &exact, &[]);
+        let stats = compute_stats(&units, &exact, &[]);
         assert!(stats.exact_duplicate_lines > 0);
         assert_eq!(stats.near_duplicate_lines, 0);
+    }
+
+    #[test]
+    fn stats_total_lines_computed() {
+        let units = make_units(
+            r#"
+            fn foo(x: i32) -> i32 {
+                let y = x + 1;
+                y * 2
+            }
+            fn bar(a: i32) -> i32 {
+                let b = a + 1;
+                b * 2
+            }
+            "#,
+        );
+        let stats = compute_stats(&units, &[], &[]);
+        assert!(stats.total_lines > 0);
+    }
+
+    #[test]
+    fn percentage_helpers() {
+        let stats = DuplicationStats {
+            total_code_units: 10,
+            total_lines: 200,
+            exact_duplicate_groups: 2,
+            exact_duplicate_units: 4,
+            near_duplicate_groups: 1,
+            near_duplicate_units: 3,
+            exact_duplicate_lines: 50,
+            near_duplicate_lines: 30,
+        };
+        assert!((stats.exact_duplicate_percent() - 25.0).abs() < f64::EPSILON);
+        assert!((stats.near_duplicate_percent() - 15.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn percentage_helpers_zero_total() {
+        let stats = DuplicationStats {
+            total_code_units: 0,
+            total_lines: 0,
+            exact_duplicate_groups: 0,
+            exact_duplicate_units: 0,
+            near_duplicate_groups: 0,
+            near_duplicate_units: 0,
+            exact_duplicate_lines: 0,
+            near_duplicate_lines: 0,
+        };
+        assert!((stats.exact_duplicate_percent() - 0.0).abs() < f64::EPSILON);
+        assert!((stats.near_duplicate_percent() - 0.0).abs() < f64::EPSILON);
     }
 }

@@ -74,6 +74,12 @@ enum Command {
         /// Maximum allowed near duplicate groups (exit 1 if exceeded).
         #[arg(long)]
         max_near: Option<usize>,
+        /// Maximum allowed exact duplicate percentage (exit 1 if exceeded).
+        #[arg(long)]
+        max_exact_percent: Option<f64>,
+        /// Maximum allowed near duplicate percentage (exit 1 if exceeded).
+        #[arg(long)]
+        max_near_percent: Option<f64>,
     },
     /// Add a fingerprint to the ignore list.
     Ignore {
@@ -196,11 +202,15 @@ fn main() {
         Command::Check {
             max_exact,
             max_near,
+            max_exact_percent,
+            max_near_percent,
         } => {
             let max_exact = max_exact.or(config.max_exact_duplicates).unwrap_or(0);
             let max_near = max_near
                 .or(config.max_near_duplicates)
                 .unwrap_or(usize::MAX);
+            let max_exact_pct = max_exact_percent.or(config.max_exact_percent);
+            let max_near_pct = max_near_percent.or(config.max_near_percent);
 
             reporter.report_stats(&result.stats, &mut writer).unwrap();
 
@@ -230,6 +240,38 @@ fn main() {
                     .report_near(&result.near_groups, &mut writer)
                     .unwrap();
                 failed = true;
+            }
+
+            if let Some(threshold) = max_exact_pct {
+                let actual = result.stats.exact_duplicate_percent();
+                if actual > threshold {
+                    writeln!(
+                        writer,
+                        "\nCheck FAILED: {:.1}% exact duplicate lines (max: {:.1}%)",
+                        actual, threshold
+                    )
+                    .unwrap();
+                    reporter
+                        .report_exact(&result.exact_groups, &mut writer)
+                        .unwrap();
+                    failed = true;
+                }
+            }
+
+            if let Some(threshold) = max_near_pct {
+                let actual = result.stats.near_duplicate_percent();
+                if actual > threshold {
+                    writeln!(
+                        writer,
+                        "\nCheck FAILED: {:.1}% near duplicate lines (max: {:.1}%)",
+                        actual, threshold
+                    )
+                    .unwrap();
+                    reporter
+                        .report_near(&result.near_groups, &mut writer)
+                        .unwrap();
+                    failed = true;
+                }
             }
 
             if failed {
