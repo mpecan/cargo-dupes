@@ -17,6 +17,8 @@ pub struct Config {
     pub max_near_duplicates: Option<usize>,
     /// Minimum number of source lines for a code unit to be analyzed.
     pub min_lines: usize,
+    /// Exclude test code (#[test] functions and #[cfg(test)] modules).
+    pub exclude_tests: bool,
     /// Root path to analyze.
     pub root: PathBuf,
 }
@@ -30,6 +32,7 @@ impl Default for Config {
             max_exact_duplicates: None,
             max_near_duplicates: None,
             min_lines: 0,
+            exclude_tests: false,
             root: PathBuf::from("."),
         }
     }
@@ -45,6 +48,7 @@ struct FileConfig {
     max_exact_duplicates: Option<usize>,
     max_near_duplicates: Option<usize>,
     min_lines: Option<usize>,
+    exclude_tests: Option<bool>,
 }
 
 /// Cargo.toml metadata section.
@@ -120,6 +124,9 @@ impl Config {
         }
         if let Some(v) = fc.min_lines {
             self.min_lines = v;
+        }
+        if let Some(v) = fc.exclude_tests {
+            self.exclude_tests = v;
         }
     }
 }
@@ -226,6 +233,20 @@ mod tests {
         let config = Config::load(tmp.path());
         assert_eq!(config.max_exact_duplicates, Some(0));
         assert_eq!(config.max_near_duplicates, Some(5));
+    }
+
+    #[test]
+    fn config_with_exclude_tests() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("dupes.toml"),
+            r#"
+            exclude_tests = true
+            "#,
+        )
+        .unwrap();
+        let config = Config::load(tmp.path());
+        assert!(config.exclude_tests);
     }
 
     #[test]

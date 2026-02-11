@@ -345,6 +345,64 @@ fn json_stats_includes_line_counts() {
     assert!(parsed["near_duplicate_lines"].is_u64());
 }
 
+// ── Exclude tests ───────────────────────────────────────────────────────
+
+#[test]
+fn exclude_tests_flag_reduces_duplicates() {
+    // Without --exclude-tests: 3 units in 1 group (2 production + 1 in #[cfg(test)] mod)
+    let output_all = cargo_dupes()
+        .args([
+            "--path",
+            fixture_path("test_code").to_str().unwrap(),
+            "--format",
+            "json",
+            "stats",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let all: serde_json::Value =
+        serde_json::from_str(&String::from_utf8(output_all).unwrap()).unwrap();
+    assert_eq!(all["exact_duplicate_units"].as_u64().unwrap(), 3);
+
+    // With --exclude-tests: only 2 production units remain
+    let output_excl = cargo_dupes()
+        .args([
+            "--path",
+            fixture_path("test_code").to_str().unwrap(),
+            "--exclude-tests",
+            "--format",
+            "json",
+            "stats",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let excl: serde_json::Value =
+        serde_json::from_str(&String::from_utf8(output_excl).unwrap()).unwrap();
+    assert_eq!(excl["exact_duplicate_units"].as_u64().unwrap(), 2);
+    assert_eq!(excl["total_code_units"].as_u64().unwrap(), 2);
+}
+
+#[test]
+fn exclude_tests_text_report() {
+    cargo_dupes()
+        .args([
+            "--path",
+            fixture_path("test_code").to_str().unwrap(),
+            "--exclude-tests",
+            "report",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Exact Duplicates"))
+        .stdout(predicate::str::contains("Group 1"));
+}
+
 #[test]
 fn near_dupes_detected() {
     cargo_dupes()

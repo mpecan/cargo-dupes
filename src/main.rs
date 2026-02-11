@@ -48,6 +48,10 @@ struct Cli {
     /// Exclude patterns (can be repeated).
     #[arg(long, global = true)]
     exclude: Vec<String>,
+
+    /// Exclude test code (#[test] functions and #[cfg(test)] modules).
+    #[arg(long, global = true)]
+    exclude_tests: bool,
 }
 
 #[derive(Clone, clap::ValueEnum)]
@@ -147,6 +151,9 @@ fn main() {
     }
     if !cli.exclude.is_empty() {
         config.exclude = cli.exclude;
+    }
+    if cli.exclude_tests {
+        config.exclude_tests = true;
     }
 
     let result = match cargo_dupes::analyze(&config) {

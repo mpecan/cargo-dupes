@@ -50,6 +50,7 @@ Options:
       --threshold <THRESHOLD>  Similarity threshold for near-duplicates (0.0-1.0) [default: 0.8]
       --format <FORMAT>        Output format [default: text] [possible values: text, json]
       --exclude <EXCLUDE>      Exclude patterns (can be repeated)
+      --exclude-tests          Exclude test code (#[test] functions and #[cfg(test)] modules)
 ```
 
 ### Examples
@@ -114,7 +115,13 @@ $ cargo dupes check --max-exact 0
 # Exits with code 0 if within thresholds
 ```
 
-**Exclude test files:**
+**Exclude test code (inline `#[cfg(test)]` modules and `#[test]` functions):**
+
+```sh
+$ cargo dupes --exclude-tests report
+```
+
+**Exclude test directories by path:**
 
 ```sh
 $ cargo dupes --exclude tests --exclude benches report
@@ -147,6 +154,7 @@ min_nodes = 15
 min_lines = 5
 similarity_threshold = 0.85
 exclude = ["tests", "benches"]
+exclude_tests = true
 max_exact_duplicates = 0
 max_near_duplicates = 10
 ```
@@ -168,6 +176,7 @@ exclude = ["tests"]
 | `min_lines` | `0` | Minimum source line count for a code unit to be analyzed. `0` means disabled. |
 | `similarity_threshold` | `0.8` | Minimum similarity score (0.0-1.0) for near-duplicate detection. |
 | `exclude` | `[]` | Path patterns to exclude from scanning (substring match). |
+| `exclude_tests` | `false` | Exclude `#[test]` functions and `#[cfg(test)]` modules from analysis. |
 | `max_exact_duplicates` | `None` | For `check` subcommand: maximum allowed exact duplicate groups. |
 | `max_near_duplicates` | `None` | For `check` subcommand: maximum allowed near-duplicate groups. |
 
@@ -228,7 +237,7 @@ The scanner automatically:
 
 ```sh
 cargo build          # Build
-cargo test           # Run all 131 tests
+cargo test           # Run all 140 tests
 cargo clippy         # Lint check
 cargo fmt --check    # Format check
 ```
