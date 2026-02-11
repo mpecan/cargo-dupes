@@ -1,6 +1,6 @@
 [package]
 name = "cargo-dupes"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 description = "A cargo subcommand that detects duplicate and near-duplicate code blocks in Rust codebases using AST normalization"
 license = "MIT"
