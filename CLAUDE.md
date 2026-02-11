@@ -10,7 +10,7 @@
 
 ```sh
 cargo build          # Build
-cargo test           # Run all 125 tests (109 unit + 16 integration)
+cargo test           # Run all 131 tests (112 unit + 19 integration)
 cargo clippy         # Lint (must be clean)
 cargo fmt --check    # Format check
 ```
@@ -31,7 +31,7 @@ scan_files → parse_files → group_exact_duplicates → find_near_duplicates �
 |--------|------|---------------|
 | **normalizer** | `src/normalizer.rs` | Core AST normalization. Defines `NormalizedNode` enum (~30 variants), `NormalizationContext` for identifier-to-placeholder mapping, and normalization functions for expressions, statements, patterns, types, and signatures. |
 | **fingerprint** | `src/fingerprint.rs` | `Fingerprint` struct wrapping `u64` from `DefaultHasher`. Supports hex serialization. |
-| **parser** | `src/parser.rs` | `CodeUnit` extraction using `syn::visit::Visit`. Visits `ItemFn`, `ItemImpl`, `ExprClosure`. Extracts units above `min_node_count` threshold. |
+| **parser** | `src/parser.rs` | `CodeUnit` extraction using `syn::visit::Visit`. Visits `ItemFn`, `ItemImpl`, `ExprClosure`. Extracts units above `min_node_count` and `min_line_count` thresholds. |
 | **scanner** | `src/scanner.rs` | File discovery via `walkdir`. Skips `target/` and hidden directories. Respects exclude patterns. |
 | **similarity** | `src/similarity.rs` | Recursive tree comparison using Dice coefficient: `score = (2 * matching) / (nodes_a + nodes_b)`. |
 | **grouper** | `src/grouper.rs` | Exact duplicate grouping via `HashMap<Fingerprint, Vec<CodeUnit>>`. Near-duplicate detection with size-bucket pre-filtering and union-find for transitive closure. |
@@ -55,7 +55,8 @@ This enables `derive(Hash)` for fingerprinting and recursive tree comparison for
 
 - `CodeUnit` — A function, method, closure, or impl block extracted from source. Contains normalized signature + body, fingerprint, file location, line numbers.
 - `DuplicateGroup` — A group of code units with the same fingerprint (exact) or above the similarity threshold (near).
-- `Config` — All analysis parameters (min_nodes, similarity_threshold, excludes, CI thresholds).
+- `DuplicationStats` — Statistics including group/unit counts and duplicated line counts (exact and near).
+- `Config` — All analysis parameters (min_nodes, min_lines, similarity_threshold, excludes, CI thresholds).
 
 ## CLI Subcommands
 
