@@ -45,6 +45,7 @@ pub struct CodeUnit {
 struct CodeUnitExtractor {
     file: PathBuf,
     min_node_count: usize,
+    min_line_count: usize,
     units: Vec<CodeUnit>,
     /// Track current impl block context for method naming.
     current_impl: Option<String>,
@@ -53,10 +54,11 @@ struct CodeUnitExtractor {
 }
 
 impl CodeUnitExtractor {
-    fn new(file: PathBuf, min_node_count: usize) -> Self {
+    fn new(file: PathBuf, min_node_count: usize, min_line_count: usize) -> Self {
         Self {
             file,
             min_node_count,
+            min_line_count,
             units: Vec::new(),
             current_impl: None,
             in_trait_impl: false,
@@ -74,6 +76,10 @@ impl CodeUnitExtractor {
     ) {
         let node_count = normalizer::count_nodes(&sig) + normalizer::count_nodes(&body);
         if node_count < self.min_node_count {
+            return;
+        }
+        let line_count = line_end.saturating_sub(line_start) + 1;
+        if self.min_line_count > 0 && line_count < self.min_line_count {
             return;
         }
         let fingerprint = Fingerprint::from_sig_and_body(&sig, &body);
@@ -165,7 +171,10 @@ impl<'ast> Visit<'ast> for CodeUnitExtractor {
 
         let normalized = normalizer::normalize_closure_expr(node);
         let node_count = normalizer::count_nodes(&normalized);
-        if node_count >= self.min_node_count {
+        let line_count = line_end.saturating_sub(line_start) + 1;
+        if node_count >= self.min_node_count
+            && (self.min_line_count == 0 || line_count >= self.min_line_count)
+        {
             let name = format!("closure at {}:{}", self.file.display(), line_start);
             let fingerprint = Fingerprint::from_node(&normalized);
             self.units.push(CodeUnit {
@@ -201,26 +210,34 @@ fn quote_type(ty: &syn::Type) -> String {
 }
 
 /// Parse a single Rust file and extract code units.
-pub fn parse_file(path: &Path, min_node_count: usize) -> Result<Vec<CodeUnit>, String> {
+pub fn parse_file(
+    path: &Path,
+    min_node_count: usize,
+    min_line_count: usize,
+) -> Result<Vec<CodeUnit>, String> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
 
     let file = syn::parse_file(&content)
         .map_err(|e| format!("Failed to parse {}: {}", path.display(), e))?;
 
-    let mut extractor = CodeUnitExtractor::new(path.to_path_buf(), min_node_count);
+    let mut extractor = CodeUnitExtractor::new(path.to_path_buf(), min_node_count, min_line_count);
     extractor.visit_file(&file);
 
     Ok(extractor.units)
 }
 
 /// Parse multiple files and collect all code units, skipping files that fail to parse.
-pub fn parse_files(paths: &[PathBuf], min_node_count: usize) -> (Vec<CodeUnit>, Vec<String>) {
+pub fn parse_files(
+    paths: &[PathBuf],
+    min_node_count: usize,
+    min_line_count: usize,
+) -> (Vec<CodeUnit>, Vec<String>) {
     let mut units = Vec::new();
     let mut warnings = Vec::new();
 
     for path in paths {
-        match parse_file(path, min_node_count) {
+        match parse_file(path, min_node_count, min_line_count) {
             Ok(file_units) => units.extend(file_units),
             Err(warning) => warnings.push(warning),
         }
@@ -239,7 +256,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("test.rs");
         fs::write(&file, code).unwrap();
-        parse_file(&file, min_nodes).unwrap()
+        parse_file(&file, min_nodes, 0).unwrap()
     }
 
     #[test]
@@ -393,7 +410,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("broken.rs");
         fs::write(&file, "fn broken( { }").unwrap();
-        let result = parse_file(&file, 1);
+        let result = parse_file(&file, 1, 0);
         assert!(result.is_err());
     }
 
@@ -404,7 +421,7 @@ mod tests {
         let bad = tmp.path().join("bad.rs");
         fs::write(&good, "fn good() { let x = 1; }").unwrap();
         fs::write(&bad, "fn bad( {").unwrap();
-        let (units, warnings) = parse_files(&[good, bad], 1);
+        let (units, warnings) = parse_files(&[good, bad], 1, 0);
         assert!(!units.is_empty());
         assert_eq!(warnings.len(), 1);
     }
@@ -455,5 +472,37 @@ fn second() {
             .filter(|u| u.kind == CodeUnitKind::Closure)
             .collect();
         assert!(!closures.is_empty());
+    }
+
+    #[test]
+    fn min_line_count_filters_short_functions() {
+        let code = r#"
+fn short(x: i32) -> i32 {
+    x + 1
+}
+
+fn longer(x: i32) -> i32 {
+    let a = x + 1;
+    let b = a * 2;
+    let c = b - 3;
+    let d = c + 4;
+    a + b + c + d
+}
+        "#;
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("test.rs");
+        fs::write(&file, code).unwrap();
+
+        // With min_line_count=0, both functions should appear
+        let units_all = parse_file(&file, 1, 0).unwrap();
+        assert!(units_all.len() >= 2);
+
+        // With min_line_count=5, only the longer function should pass
+        let units_filtered = parse_file(&file, 1, 5).unwrap();
+        assert!(units_filtered.len() < units_all.len());
+        for unit in &units_filtered {
+            let lines = unit.line_end.saturating_sub(unit.line_start) + 1;
+            assert!(lines >= 5, "unit {} has only {lines} lines", unit.name);
+        }
     }
 }

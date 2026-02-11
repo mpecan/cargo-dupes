@@ -46,6 +46,7 @@ Commands:
 Options:
   -p, --path <PATH>            Path to analyze (defaults to current directory)
       --min-nodes <MIN_NODES>  Minimum AST node count for analysis [default: 10]
+      --min-lines <MIN_LINES>  Minimum source line count for analysis [default: 0 (disabled)]
       --threshold <THRESHOLD>  Similarity threshold for near-duplicates (0.0-1.0) [default: 0.8]
       --format <FORMAT>        Output format [default: text] [possible values: text, json]
       --exclude <EXCLUDE>      Exclude patterns (can be repeated)
@@ -63,6 +64,9 @@ Total code units analyzed: 4
 
 Exact duplicates: 1 groups (2 code units)
 Near duplicates:  0 groups (0 code units)
+
+Duplicated lines (exact): 18
+Duplicated lines (near):  0
 
 Exact Duplicates
 ================
@@ -82,6 +86,9 @@ Total code units analyzed: 4
 
 Exact duplicates: 1 groups (2 code units)
 Near duplicates:  0 groups (0 code units)
+
+Duplicated lines (exact): 18
+Duplicated lines (near):  0
 ```
 
 **JSON output:**
@@ -93,7 +100,9 @@ $ cargo dupes --format json stats
   "exact_duplicate_groups": 1,
   "exact_duplicate_units": 2,
   "near_duplicate_groups": 0,
-  "near_duplicate_units": 0
+  "near_duplicate_units": 0,
+  "exact_duplicate_lines": 18,
+  "near_duplicate_lines": 0
 }
 ```
 
@@ -109,6 +118,12 @@ $ cargo dupes check --max-exact 0
 
 ```sh
 $ cargo dupes --exclude tests --exclude benches report
+```
+
+**Only report duplicates that are at least 10 lines long:**
+
+```sh
+$ cargo dupes --min-lines 10 report
 ```
 
 **Lower the similarity threshold:**
@@ -129,6 +144,7 @@ Configuration can be provided in three ways (in order of precedence):
 
 ```toml
 min_nodes = 15
+min_lines = 5
 similarity_threshold = 0.85
 exclude = ["tests", "benches"]
 max_exact_duplicates = 0
@@ -149,6 +165,7 @@ exclude = ["tests"]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `min_nodes` | `10` | Minimum AST node count for a code unit to be analyzed. Increase to skip trivial functions. |
+| `min_lines` | `0` | Minimum source line count for a code unit to be analyzed. `0` means disabled. |
 | `similarity_threshold` | `0.8` | Minimum similarity score (0.0-1.0) for near-duplicate detection. |
 | `exclude` | `[]` | Path patterns to exclude from scanning (substring match). |
 | `max_exact_duplicates` | `None` | For `check` subcommand: maximum allowed exact duplicate groups. |
@@ -211,7 +228,7 @@ The scanner automatically:
 
 ```sh
 cargo build          # Build
-cargo test           # Run all 125 tests
+cargo test           # Run all 131 tests
 cargo clippy         # Lint check
 cargo fmt --check    # Format check
 ```

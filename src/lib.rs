@@ -32,7 +32,7 @@ pub fn analyze(config: &Config) -> error::Result<AnalysisResult> {
     }
 
     // 2. Parse all files
-    let (units, warnings) = parser::parse_files(&files, config.min_nodes);
+    let (units, warnings) = parser::parse_files(&files, config.min_nodes, config.min_lines);
 
     // 3. Group exact duplicates
     let exact_groups = grouper::group_exact_duplicates(&units);

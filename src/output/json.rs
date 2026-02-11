@@ -29,6 +29,8 @@ struct JsonStats {
     exact_duplicate_units: usize,
     near_duplicate_groups: usize,
     near_duplicate_units: usize,
+    exact_duplicate_lines: usize,
+    near_duplicate_lines: usize,
 }
 
 #[derive(serde::Serialize)]
@@ -56,6 +58,8 @@ impl Reporter for JsonReporter {
             exact_duplicate_units: stats.exact_duplicate_units,
             near_duplicate_groups: stats.near_duplicate_groups,
             near_duplicate_units: stats.near_duplicate_units,
+            exact_duplicate_lines: stats.exact_duplicate_lines,
+            near_duplicate_lines: stats.near_duplicate_lines,
         };
         let json = serde_json::to_string_pretty(&json_stats).map_err(io::Error::other)?;
         writeln!(writer, "{json}")
@@ -129,6 +133,8 @@ mod tests {
             exact_duplicate_units: 8,
             near_duplicate_groups: 2,
             near_duplicate_units: 5,
+            exact_duplicate_lines: 30,
+            near_duplicate_lines: 20,
         };
         let mut buf = Vec::new();
         reporter.report_stats(&stats, &mut buf).unwrap();

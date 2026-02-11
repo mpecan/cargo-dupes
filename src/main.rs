@@ -33,6 +33,10 @@ struct Cli {
     #[arg(long, global = true)]
     min_nodes: Option<usize>,
 
+    /// Minimum source line count for analysis.
+    #[arg(long, global = true)]
+    min_lines: Option<usize>,
+
     /// Similarity threshold (0.0-1.0).
     #[arg(long, global = true)]
     threshold: Option<f64>,
@@ -134,6 +138,9 @@ fn main() {
     // Apply CLI overrides
     if let Some(min_nodes) = cli.min_nodes {
         config.min_nodes = min_nodes;
+    }
+    if let Some(min_lines) = cli.min_lines {
+        config.min_lines = min_lines;
     }
     if let Some(threshold) = cli.threshold {
         config.similarity_threshold = threshold;
