@@ -23,6 +23,8 @@ pub struct DuplicationStats {
     pub exact_duplicate_units: usize,
     pub near_duplicate_groups: usize,
     pub near_duplicate_units: usize,
+    pub exact_duplicate_lines: usize,
+    pub near_duplicate_lines: usize,
 }
 
 /// Group code units by exact fingerprint match.
@@ -179,6 +181,15 @@ pub fn find_near_duplicates(
     result
 }
 
+/// Compute the total number of source lines in a duplicate group.
+fn group_line_count(group: &DuplicateGroup) -> usize {
+    group
+        .members
+        .iter()
+        .map(|m| m.line_end.saturating_sub(m.line_start) + 1)
+        .sum()
+}
+
 /// Compute duplication statistics.
 pub fn compute_stats(
     total_units: usize,
@@ -191,6 +202,8 @@ pub fn compute_stats(
         exact_duplicate_units: exact_groups.iter().map(|g| g.members.len()).sum(),
         near_duplicate_groups: near_groups.len(),
         near_duplicate_units: near_groups.iter().map(|g| g.members.len()).sum(),
+        exact_duplicate_lines: exact_groups.iter().map(group_line_count).sum(),
+        near_duplicate_lines: near_groups.iter().map(group_line_count).sum(),
     }
 }
 
@@ -222,7 +235,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("test.rs");
         fs::write(&file, code).unwrap();
-        parser::parse_file(&file, 1).unwrap()
+        parser::parse_file(&file, 1, 0).unwrap()
     }
 
     #[test]
@@ -383,5 +396,25 @@ mod tests {
         let stats = compute_stats(10, &[], &[near_group]);
         assert_eq!(stats.total_code_units, 10);
         assert_eq!(stats.near_duplicate_groups, 1);
+    }
+
+    #[test]
+    fn stats_includes_line_counts() {
+        let units = make_units(
+            r#"
+            fn foo(x: i32) -> i32 {
+                let y = x + 1;
+                y * 2
+            }
+            fn bar(a: i32) -> i32 {
+                let b = a + 1;
+                b * 2
+            }
+            "#,
+        );
+        let exact = group_exact_duplicates(&units);
+        let stats = compute_stats(units.len(), &exact, &[]);
+        assert!(stats.exact_duplicate_lines > 0);
+        assert_eq!(stats.near_duplicate_lines, 0);
     }
 }

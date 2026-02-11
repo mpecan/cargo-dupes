@@ -15,6 +15,8 @@ pub struct Config {
     pub max_exact_duplicates: Option<usize>,
     /// Exit code threshold: fail if near duplicate count exceeds this.
     pub max_near_duplicates: Option<usize>,
+    /// Minimum number of source lines for a code unit to be analyzed.
+    pub min_lines: usize,
     /// Root path to analyze.
     pub root: PathBuf,
 }
@@ -27,6 +29,7 @@ impl Default for Config {
             exclude: Vec::new(),
             max_exact_duplicates: None,
             max_near_duplicates: None,
+            min_lines: 0,
             root: PathBuf::from("."),
         }
     }
@@ -41,6 +44,7 @@ struct FileConfig {
     exclude: Option<Vec<String>>,
     max_exact_duplicates: Option<usize>,
     max_near_duplicates: Option<usize>,
+    min_lines: Option<usize>,
 }
 
 /// Cargo.toml metadata section.
@@ -113,6 +117,9 @@ impl Config {
         }
         if let Some(v) = fc.max_near_duplicates {
             self.max_near_duplicates = Some(v);
+        }
+        if let Some(v) = fc.min_lines {
+            self.min_lines = v;
         }
     }
 }
@@ -219,5 +226,19 @@ mod tests {
         let config = Config::load(tmp.path());
         assert_eq!(config.max_exact_duplicates, Some(0));
         assert_eq!(config.max_near_duplicates, Some(5));
+    }
+
+    #[test]
+    fn config_with_min_lines() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("dupes.toml"),
+            r#"
+            min_lines = 5
+            "#,
+        )
+        .unwrap();
+        let config = Config::load(tmp.path());
+        assert_eq!(config.min_lines, 5);
     }
 }

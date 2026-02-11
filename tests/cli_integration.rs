@@ -295,6 +295,57 @@ fn help_works() {
 // ── Near duplicates detection ───────────────────────────────────────────
 
 #[test]
+fn min_lines_option() {
+    // With very high min_lines, short functions should be excluded
+    cargo_dupes()
+        .args([
+            "--path",
+            fixture_path("exact_dupes").to_str().unwrap(),
+            "--min-lines",
+            "1000",
+            "stats",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Exact duplicates: 0 groups"));
+}
+
+#[test]
+fn stats_shows_duplicate_lines() {
+    cargo_dupes()
+        .args([
+            "--path",
+            fixture_path("exact_dupes").to_str().unwrap(),
+            "stats",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Duplicated lines (exact):"))
+        .stdout(predicate::str::contains("Duplicated lines (near):"));
+}
+
+#[test]
+fn json_stats_includes_line_counts() {
+    let output = cargo_dupes()
+        .args([
+            "--path",
+            fixture_path("exact_dupes").to_str().unwrap(),
+            "--format",
+            "json",
+            "stats",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let text = String::from_utf8(output).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert!(parsed["exact_duplicate_lines"].is_u64());
+    assert!(parsed["near_duplicate_lines"].is_u64());
+}
+
+#[test]
 fn near_dupes_detected() {
     cargo_dupes()
         .args([

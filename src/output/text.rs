@@ -44,6 +44,17 @@ impl Reporter for TextReporter {
             "Near duplicates:  {} groups ({} code units)",
             stats.near_duplicate_groups, stats.near_duplicate_units
         )?;
+        writeln!(writer)?;
+        writeln!(
+            writer,
+            "Duplicated lines (exact): {}",
+            stats.exact_duplicate_lines
+        )?;
+        writeln!(
+            writer,
+            "Duplicated lines (near):  {}",
+            stats.near_duplicate_lines
+        )?;
         Ok(())
     }
 
@@ -155,6 +166,8 @@ mod tests {
             exact_duplicate_units: 12,
             near_duplicate_groups: 3,
             near_duplicate_units: 8,
+            exact_duplicate_lines: 60,
+            near_duplicate_lines: 40,
         };
         let mut buf = Vec::new();
         reporter.report_stats(&stats, &mut buf).unwrap();
