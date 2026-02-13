@@ -186,8 +186,9 @@ mod tests {
     #[test]
     fn json_report_near_with_groups() {
         let reporter = JsonReporter::new(None);
+        let fp = Fingerprint::from_node(&NormalizedNode::Block(vec![]));
         let group = DuplicateGroup {
-            fingerprint: None,
+            fingerprint: Some(fp),
             members: vec![
                 make_unit("process", "/src/a.rs", 10, 25),
                 make_unit("compute", "/src/b.rs", 30, 45),
@@ -200,7 +201,7 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
         let groups = parsed.as_array().unwrap();
         assert_eq!(groups.len(), 1);
-        assert!(groups[0]["fingerprint"].is_null());
+        assert_eq!(groups[0]["fingerprint"].as_str().unwrap(), fp.to_hex());
         assert_eq!(groups[0]["similarity"], 0.85);
     }
 
@@ -222,8 +223,9 @@ mod tests {
     #[test]
     fn json_relative_paths() {
         let reporter = JsonReporter::new(Some(PathBuf::from("/home/user/project")));
+        let fp = Fingerprint::from_node(&NormalizedNode::Block(vec![]));
         let group = DuplicateGroup {
-            fingerprint: None,
+            fingerprint: Some(fp),
             members: vec![make_unit("foo", "/home/user/project/src/main.rs", 1, 10)],
             similarity: 0.9,
         };

@@ -95,10 +95,47 @@ pub fn filter_ignored(
             if let Some(fp) = g.fingerprint {
                 !is_ignored(ignore_file, &fp)
             } else {
-                true // near-duplicates without fingerprints are never ignored
+                true
             }
         })
         .collect()
+}
+
+/// Find ignore entries whose fingerprint doesn't match any live group.
+pub fn find_stale_entries<'a>(
+    ignore_file: &'a IgnoreFile,
+    live_fingerprints: &std::collections::HashSet<Fingerprint>,
+) -> Vec<&'a IgnoreEntry> {
+    ignore_file
+        .ignore
+        .iter()
+        .filter(|entry| {
+            Fingerprint::from_hex(&entry.fingerprint)
+                .map(|fp| !live_fingerprints.contains(&fp))
+                .unwrap_or(true) // invalid hex is always stale
+        })
+        .collect()
+}
+
+/// Remove and return stale ignore entries.
+pub fn remove_stale_entries(
+    ignore_file: &mut IgnoreFile,
+    live_fingerprints: &std::collections::HashSet<Fingerprint>,
+) -> Vec<IgnoreEntry> {
+    let mut stale = Vec::new();
+    let mut live = Vec::new();
+    for entry in ignore_file.ignore.drain(..) {
+        let is_live = Fingerprint::from_hex(&entry.fingerprint)
+            .map(|fp| live_fingerprints.contains(&fp))
+            .unwrap_or(false);
+        if is_live {
+            live.push(entry);
+        } else {
+            stale.push(entry);
+        }
+    }
+    ignore_file.ignore = live;
+    stale
 }
 
 #[cfg(test)]
@@ -196,19 +233,72 @@ mod tests {
     }
 
     #[test]
-    fn filter_ignored_keeps_near_duplicates() {
+    fn filter_ignored_removes_near_duplicates_with_matching_fingerprint() {
         let fp = test_fingerprint();
         let mut ignore = IgnoreFile::default();
         add_ignore(&mut ignore, &fp, None, vec![]);
 
         let groups = vec![DuplicateGroup {
-            fingerprint: None,
+            fingerprint: Some(fp),
+            members: vec![],
+            similarity: 0.85,
+        }];
+
+        let filtered = filter_ignored(groups, &ignore);
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn filter_ignored_keeps_near_duplicates_without_matching_entry() {
+        let fp = test_fingerprint();
+        let other_fp = Fingerprint::from_node(&NormalizedNode::Block(vec![]));
+        let mut ignore = IgnoreFile::default();
+        add_ignore(&mut ignore, &other_fp, None, vec![]);
+
+        let groups = vec![DuplicateGroup {
+            fingerprint: Some(fp),
             members: vec![],
             similarity: 0.85,
         }];
 
         let filtered = filter_ignored(groups, &ignore);
         assert_eq!(filtered.len(), 1);
+    }
+
+    #[test]
+    fn find_stale_entries_identifies_stale_vs_live() {
+        let live_fp = test_fingerprint();
+        let stale_fp = Fingerprint::from_node(&NormalizedNode::Block(vec![]));
+
+        let mut ignore = IgnoreFile::default();
+        add_ignore(&mut ignore, &live_fp, Some("live".to_string()), vec![]);
+        add_ignore(&mut ignore, &stale_fp, Some("stale".to_string()), vec![]);
+
+        let mut live_set = std::collections::HashSet::new();
+        live_set.insert(live_fp);
+
+        let stale = find_stale_entries(&ignore, &live_set);
+        assert_eq!(stale.len(), 1);
+        assert_eq!(stale[0].reason, Some("stale".to_string()));
+    }
+
+    #[test]
+    fn remove_stale_entries_removes_only_stale() {
+        let live_fp = test_fingerprint();
+        let stale_fp = Fingerprint::from_node(&NormalizedNode::Block(vec![]));
+
+        let mut ignore = IgnoreFile::default();
+        add_ignore(&mut ignore, &live_fp, Some("live".to_string()), vec![]);
+        add_ignore(&mut ignore, &stale_fp, Some("stale".to_string()), vec![]);
+
+        let mut live_set = std::collections::HashSet::new();
+        live_set.insert(live_fp);
+
+        let removed = remove_stale_entries(&mut ignore, &live_set);
+        assert_eq!(removed.len(), 1);
+        assert_eq!(removed[0].reason, Some("stale".to_string()));
+        assert_eq!(ignore.ignore.len(), 1);
+        assert_eq!(ignore.ignore[0].reason, Some("live".to_string()));
     }
 
     #[test]

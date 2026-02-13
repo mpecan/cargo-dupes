@@ -130,10 +130,15 @@ impl Reporter for TextReporter {
         writeln!(writer)?;
 
         for (i, group) in groups.iter().enumerate() {
+            let fp = group
+                .fingerprint
+                .map(|f| f.to_hex())
+                .unwrap_or_else(|| "unknown".to_string());
             writeln!(
                 writer,
-                "Group {} (similarity: {:.0}%, {} members):",
+                "Group {} (fingerprint: {}, similarity: {:.0}%, {} members):",
                 i + 1,
+                fp,
                 group.similarity * 100.0,
                 group.members.len()
             )?;
@@ -230,8 +235,9 @@ mod tests {
     #[test]
     fn text_report_near_with_groups() {
         let reporter = TextReporter::new(None);
+        let fp = Fingerprint::from_node(&NormalizedNode::Block(vec![]));
         let group = DuplicateGroup {
-            fingerprint: None,
+            fingerprint: Some(fp),
             members: vec![
                 make_unit("process", "/src/a.rs", 10, 25),
                 make_unit("compute", "/src/b.rs", 30, 45),
@@ -241,6 +247,8 @@ mod tests {
         let mut buf = Vec::new();
         reporter.report_near(&[group], &mut buf).unwrap();
         let output = String::from_utf8(buf).unwrap();
+        assert!(output.contains("fingerprint:"));
+        assert!(output.contains(&fp.to_hex()));
         assert!(output.contains("85%"));
         assert!(output.contains("process"));
         assert!(output.contains("compute"));
