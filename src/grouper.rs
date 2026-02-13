@@ -7,7 +7,8 @@ use crate::similarity;
 /// A group of duplicate code units.
 #[derive(Debug, Clone)]
 pub struct DuplicateGroup {
-    /// Shared fingerprint (for exact duplicates) or None (for near-duplicates).
+    /// Shared fingerprint for exact duplicates, or composite fingerprint
+    /// (derived from sorted member fingerprints) for near-duplicate groups.
     pub fingerprint: Option<Fingerprint>,
     /// The code units in this group.
     pub members: Vec<CodeUnit>,
@@ -179,8 +180,11 @@ pub fn find_near_duplicates(
                 .map(|&i| candidates[i].clone())
                 .collect();
 
+            let member_fps: Vec<Fingerprint> = members.iter().map(|m| m.fingerprint).collect();
+            let composite_fp = Fingerprint::from_fingerprints(&member_fps);
+
             DuplicateGroup {
-                fingerprint: None,
+                fingerprint: Some(composite_fp),
                 members,
                 similarity: if min_score.is_infinite() {
                     threshold
@@ -192,11 +196,15 @@ pub fn find_near_duplicates(
         .collect();
 
     result.sort_by(|a, b| {
-        b.members.len().cmp(&a.members.len()).then_with(|| {
-            b.similarity
-                .partial_cmp(&a.similarity)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
+        b.members
+            .len()
+            .cmp(&a.members.len())
+            .then_with(|| {
+                b.similarity
+                    .partial_cmp(&a.similarity)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| a.fingerprint.cmp(&b.fingerprint))
     });
 
     result
@@ -422,8 +430,11 @@ mod tests {
             fn b(y: i32) -> i32 { y * 2 }
             "#,
         );
+        let composite_fp = Fingerprint::from_fingerprints(&[Fingerprint::from_node(
+            &crate::normalizer::NormalizedNode::Opaque,
+        )]);
         let near_group = DuplicateGroup {
-            fingerprint: None,
+            fingerprint: Some(composite_fp),
             members: vec![],
             similarity: 0.85,
         };

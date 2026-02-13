@@ -24,6 +24,18 @@ impl Fingerprint {
         Fingerprint(hasher.finish())
     }
 
+    /// Compute a composite fingerprint from a set of fingerprints.
+    /// Sorts by u64 value for order-independence, then hashes the sorted sequence.
+    pub fn from_fingerprints(fps: &[Fingerprint]) -> Self {
+        let mut sorted: Vec<u64> = fps.iter().map(|fp| fp.0).collect();
+        sorted.sort_unstable();
+        let mut hasher = DefaultHasher::new();
+        for v in &sorted {
+            v.hash(&mut hasher);
+        }
+        Fingerprint(hasher.finish())
+    }
+
     /// Get the raw u64 value.
     pub fn value(self) -> u64 {
         self.0
@@ -138,6 +150,37 @@ mod tests {
             Fingerprint::from_sig_and_body(&s1, &b1),
             Fingerprint::from_sig_and_body(&s2, &b2)
         );
+    }
+
+    #[test]
+    fn composite_fingerprint_order_independent() {
+        let fp1 = Fingerprint(1);
+        let fp2 = Fingerprint(2);
+        let fp3 = Fingerprint(3);
+        assert_eq!(
+            Fingerprint::from_fingerprints(&[fp1, fp2, fp3]),
+            Fingerprint::from_fingerprints(&[fp3, fp1, fp2])
+        );
+    }
+
+    #[test]
+    fn composite_fingerprint_different_sets_differ() {
+        let fp1 = Fingerprint(1);
+        let fp2 = Fingerprint(2);
+        let fp3 = Fingerprint(3);
+        assert_ne!(
+            Fingerprint::from_fingerprints(&[fp1, fp2]),
+            Fingerprint::from_fingerprints(&[fp2, fp3])
+        );
+    }
+
+    #[test]
+    fn composite_fingerprint_deterministic() {
+        let fp1 = Fingerprint(42);
+        let fp2 = Fingerprint(99);
+        let a = Fingerprint::from_fingerprints(&[fp1, fp2]);
+        let b = Fingerprint::from_fingerprints(&[fp1, fp2]);
+        assert_eq!(a, b);
     }
 
     #[test]

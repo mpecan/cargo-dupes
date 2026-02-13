@@ -91,6 +91,12 @@ enum Command {
     },
     /// List all ignored fingerprints.
     Ignored,
+    /// Remove stale entries from the ignore file.
+    Cleanup {
+        /// Only list stale entries without removing them.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 fn main() {
@@ -280,6 +286,46 @@ fn main() {
                 process::exit(1);
             } else {
                 writeln!(writer, "\nCheck passed.").unwrap();
+            }
+        }
+        Command::Cleanup { dry_run } => {
+            let mut ignore_file = ignore::load_ignore_file(&root);
+
+            if dry_run {
+                let stale = ignore::find_stale_entries(&ignore_file, &result.all_fingerprints);
+                if stale.is_empty() {
+                    writeln!(writer, "No stale entries found.").unwrap();
+                } else {
+                    writeln!(writer, "Stale entries (dry run):").unwrap();
+                    for entry in &stale {
+                        write!(writer, "  {}", entry.fingerprint).unwrap();
+                        if let Some(reason) = &entry.reason {
+                            write!(writer, " (reason: {reason})").unwrap();
+                        }
+                        writeln!(writer).unwrap();
+                    }
+                    writeln!(writer, "\n{} stale entries would be removed.", stale.len()).unwrap();
+                }
+            } else {
+                let removed =
+                    ignore::remove_stale_entries(&mut ignore_file, &result.all_fingerprints);
+                if removed.is_empty() {
+                    writeln!(writer, "No stale entries found.").unwrap();
+                } else {
+                    if let Err(e) = ignore::save_ignore_file(&root, &ignore_file) {
+                        eprintln!("Error saving ignore file: {e}");
+                        process::exit(2);
+                    }
+                    writeln!(writer, "Removed stale entries:").unwrap();
+                    for entry in &removed {
+                        write!(writer, "  {}", entry.fingerprint).unwrap();
+                        if let Some(reason) = &entry.reason {
+                            write!(writer, " (reason: {reason})").unwrap();
+                        }
+                        writeln!(writer).unwrap();
+                    }
+                    writeln!(writer, "\nRemoved {} stale entries.", removed.len()).unwrap();
+                }
             }
         }
         Command::Ignore { .. } | Command::Ignored => unreachable!(),
