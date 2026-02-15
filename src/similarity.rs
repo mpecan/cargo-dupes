@@ -341,6 +341,13 @@ fn count_matching(a: &NormalizedNode, b: &NormalizedNode) -> usize {
                 value: vb,
             },
         ) => 1 + count_matching(na, nb) + count_matching(va, vb),
+        (MacroCall { name: na, args: aa }, MacroCall { name: nb, args: ab }) => {
+            if na == nb {
+                1 + pairwise_matching(aa, ab)
+            } else {
+                0
+            }
+        }
         (Opaque, Opaque) => 1,
         (Range { from: fa, to: ta }, Range { from: fb, to: tb }) => {
             1 + match (fa, fb) {
@@ -514,5 +521,24 @@ mod tests {
     fn closure_similarity() {
         let score = expr_similarity("|x| x + 1", "|y| y + 1");
         assert!((score - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn same_macro_same_args_score_one() {
+        let score = expr_similarity("println!(\"hello\")", "println!(\"world\")");
+        assert!((score - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn different_macro_names_score_zero() {
+        let score = expr_similarity("println!(\"hello\")", "eprintln!(\"hello\")");
+        assert!(score < f64::EPSILON);
+    }
+
+    #[test]
+    fn same_macro_different_arg_count_partial_similarity() {
+        let score = expr_similarity("println!(\"a\")", "println!(\"a\", \"b\")");
+        assert!(score > 0.0);
+        assert!(score < 1.0);
     }
 }
