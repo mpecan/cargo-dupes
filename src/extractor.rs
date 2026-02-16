@@ -231,6 +231,11 @@ fn extract_recursive(node: &NormalizedNode, min_node_count: usize, results: &mut
             extract_recursive(pat, min_node_count, results);
             extract_recursive(expr, min_node_count, results);
         }
+        NormalizedNode::MacroCall { args, .. } => {
+            for a in args {
+                extract_recursive(a, min_node_count, results);
+            }
+        }
         NormalizedNode::PatTuple(elems)
         | NormalizedNode::PatStruct(elems)
         | NormalizedNode::PatOr(elems)
