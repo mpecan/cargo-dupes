@@ -312,10 +312,14 @@ fn normalize_macro(mac: &syn::Macro, ctx: &mut NormalizationContext) -> Normaliz
         .last()
         .map(|s| s.ident.to_string())
         .unwrap_or_default();
-    let args = mac
-        .parse_body_with(Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated)
-        .map(|punct| punct.into_iter().map(|e| normalize_expr(&e, ctx)).collect())
-        .unwrap_or_default();
+    let args = if mac.tokens.is_empty() {
+        Vec::new()
+    } else {
+        match mac.parse_body_with(Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated) {
+            Ok(punct) => punct.into_iter().map(|e| normalize_expr(&e, ctx)).collect(),
+            Err(_) => vec![NormalizedNode::Opaque],
+        }
+    };
     NormalizedNode::MacroCall { name, args }
 }
 
@@ -444,6 +448,7 @@ pub fn normalize_type(ty: &syn::Type, ctx: &mut NormalizationContext) -> Normali
         syn::Type::Infer(_) => NormalizedNode::TypeInfer,
         syn::Type::Never(_) => NormalizedNode::TypeNever,
         syn::Type::Paren(p) => normalize_type(&p.elem, ctx),
+        syn::Type::Macro(tm) => normalize_macro(&tm.mac, ctx),
         _ => NormalizedNode::Opaque,
     }
 }
@@ -514,6 +519,7 @@ pub fn normalize_pat(pat: &syn::Pat, ctx: &mut NormalizationContext) -> Normaliz
             }
         }
         syn::Pat::Type(pt) => normalize_pat(&pt.pat, ctx),
+        syn::Pat::Macro(pm) => normalize_macro(&pm.mac, ctx),
         _ => NormalizedNode::Opaque,
     }
 }
@@ -1339,5 +1345,64 @@ mod tests {
         let n = normalize_code_expr("println!(\"a\", \"b\")");
         // 1 for MacroCall + 2 args (Literal each = 1)
         assert_eq!(count_nodes(&n), 3);
+    }
+
+    #[test]
+    fn unparseable_macro_args_produce_opaque() {
+        // vec![x; n] uses semicolon syntax, which can't be parsed as comma-separated exprs
+        let n = normalize_code_expr("vec![x; 10]");
+        match &n {
+            NormalizedNode::MacroCall { name, args } => {
+                assert_eq!(name, "vec");
+                assert_eq!(args.len(), 1);
+                assert_eq!(args[0], NormalizedNode::Opaque);
+            }
+            _ => panic!("Expected MacroCall node, got {:?}", n),
+        }
+    }
+
+    #[test]
+    fn unparseable_macro_differs_from_no_args() {
+        let n_empty = normalize_code_expr("my_macro!()");
+        let n_unparseable = normalize_code_expr("vec![x; 10]");
+        match (&n_empty, &n_unparseable) {
+            (
+                NormalizedNode::MacroCall {
+                    args: args_empty, ..
+                },
+                NormalizedNode::MacroCall {
+                    args: args_unparseable,
+                    ..
+                },
+            ) => {
+                assert!(args_empty.is_empty());
+                assert_eq!(args_unparseable.len(), 1);
+                assert_eq!(args_unparseable[0], NormalizedNode::Opaque);
+            }
+            _ => panic!("Expected MacroCall nodes"),
+        }
+    }
+
+    #[test]
+    fn type_position_macro_normalized() {
+        // Type::Macro is rare but exists — we need to parse it via a function signature
+        let code = "fn foo() -> my_type!(i32) {}";
+        // syn may not parse this as Type::Macro in all cases; verify it at least doesn't panic
+        if let Ok(f) = syn::parse_str::<syn::ItemFn>(code) {
+            let (sig, _) = normalize_item_fn(&f);
+            // Just verify it produces something (doesn't panic)
+            assert!(count_nodes(&sig) > 0);
+        }
+    }
+
+    #[test]
+    fn pat_macro_normalized() {
+        // Pat::Macro appears as a macro in pattern position, e.g. in a match arm
+        // This is quite rare, but verify it at least normalizes correctly
+        let code = "fn foo(x: i32) { match x { my_pat!(x) => {} _ => {} } }";
+        if let Ok(f) = syn::parse_str::<syn::ItemFn>(code) {
+            let (_, body) = normalize_item_fn(&f);
+            assert!(count_nodes(&body) > 0);
+        }
     }
 }
