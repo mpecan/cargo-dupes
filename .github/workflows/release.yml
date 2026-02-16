@@ -26,9 +26,29 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      - name: Wait for crates.io index
-        run: sleep 30
+      - name: Wait for dupes-core to be available on crates.io
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Determine the version of dupes-core to wait for
+          DUPES_CORE_VERSION="$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "dupes-core") | .version')"
+          echo "Waiting for dupes-core version ${DUPES_CORE_VERSION} to be available on crates.io..."
 
+          MAX_ATTEMPTS=10
+          SLEEP_SECONDS=15
+
+          for attempt in $(seq 1 "${MAX_ATTEMPTS}"); do
+            if curl -fsS "https://crates.io/api/v1/crates/dupes-core/${DUPES_CORE_VERSION}" > /dev/null; then
+              echo "dupes-core ${DUPES_CORE_VERSION} is now available on crates.io."
+              exit 0
+            fi
+
+            echo "Attempt ${attempt}/${MAX_ATTEMPTS}: dupes-core ${DUPES_CORE_VERSION} not yet available. Sleeping for ${SLEEP_SECONDS}s..."
+            sleep "${SLEEP_SECONDS}"
+          done
+
+          echo "Timed out waiting for dupes-core ${DUPES_CORE_VERSION} to appear on crates.io."
+          exit 1
       - name: Publish cargo-dupes
         run: cargo publish -p cargo-dupes
         env:
