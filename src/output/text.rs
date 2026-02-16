@@ -74,6 +74,19 @@ impl Reporter for TextReporter {
             stats.near_duplicate_percent(),
             format_with_commas(stats.total_lines),
         )?;
+        if stats.sub_exact_groups > 0 || stats.sub_near_groups > 0 {
+            writeln!(writer)?;
+            writeln!(
+                writer,
+                "Sub-function exact: {} groups ({} units)",
+                stats.sub_exact_groups, stats.sub_exact_units
+            )?;
+            writeln!(
+                writer,
+                "Sub-function near:  {} groups ({} units)",
+                stats.sub_near_groups, stats.sub_near_units
+            )?;
+        }
         Ok(())
     }
 
@@ -157,6 +170,101 @@ impl Reporter for TextReporter {
         }
         Ok(())
     }
+
+    fn report_sub_exact(
+        &self,
+        groups: &[DuplicateGroup],
+        writer: &mut dyn io::Write,
+    ) -> io::Result<()> {
+        if groups.is_empty() {
+            return Ok(());
+        }
+
+        writeln!(writer, "Sub-function Exact Duplicates")?;
+        writeln!(writer, "=============================")?;
+        writeln!(writer)?;
+
+        for (i, group) in groups.iter().enumerate() {
+            let fp = group
+                .fingerprint
+                .map(|f| f.to_hex())
+                .unwrap_or_else(|| "unknown".to_string());
+            writeln!(
+                writer,
+                "Group {} (fingerprint: {}, {} members):",
+                i + 1,
+                fp,
+                group.members.len()
+            )?;
+            for member in &group.members {
+                let parent = member
+                    .parent_name
+                    .as_deref()
+                    .map(|p| format!(" in {p}"))
+                    .unwrap_or_default();
+                writeln!(
+                    writer,
+                    "  - {} ({}){} at {}:{}-{}",
+                    member.name,
+                    member.kind,
+                    parent,
+                    self.relative_path(&member.file),
+                    member.line_start,
+                    member.line_end,
+                )?;
+            }
+            writeln!(writer)?;
+        }
+        Ok(())
+    }
+
+    fn report_sub_near(
+        &self,
+        groups: &[DuplicateGroup],
+        writer: &mut dyn io::Write,
+    ) -> io::Result<()> {
+        if groups.is_empty() {
+            return Ok(());
+        }
+
+        writeln!(writer, "Sub-function Near Duplicates")?;
+        writeln!(writer, "============================")?;
+        writeln!(writer)?;
+
+        for (i, group) in groups.iter().enumerate() {
+            let fp = group
+                .fingerprint
+                .map(|f| f.to_hex())
+                .unwrap_or_else(|| "unknown".to_string());
+            writeln!(
+                writer,
+                "Group {} (fingerprint: {}, similarity: {:.0}%, {} members):",
+                i + 1,
+                fp,
+                group.similarity * 100.0,
+                group.members.len()
+            )?;
+            for member in &group.members {
+                let parent = member
+                    .parent_name
+                    .as_deref()
+                    .map(|p| format!(" in {p}"))
+                    .unwrap_or_default();
+                writeln!(
+                    writer,
+                    "  - {} ({}){} at {}:{}-{}",
+                    member.name,
+                    member.kind,
+                    parent,
+                    self.relative_path(&member.file),
+                    member.line_start,
+                    member.line_end,
+                )?;
+            }
+            writeln!(writer)?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -178,6 +286,7 @@ mod tests {
             body: NormalizedNode::Block(vec![]),
             fingerprint: Fingerprint::from_node(&NormalizedNode::Opaque),
             node_count: 10,
+            parent_name: None,
         }
     }
 
@@ -193,6 +302,10 @@ mod tests {
             near_duplicate_units: 8,
             exact_duplicate_lines: 60,
             near_duplicate_lines: 40,
+            sub_exact_groups: 0,
+            sub_exact_units: 0,
+            sub_near_groups: 0,
+            sub_near_units: 0,
         };
         let mut buf = Vec::new();
         reporter.report_stats(&stats, &mut buf).unwrap();

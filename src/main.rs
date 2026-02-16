@@ -52,6 +52,14 @@ struct Cli {
     /// Exclude test code (#[test] functions and #[cfg(test)] modules).
     #[arg(long, global = true)]
     exclude_tests: bool,
+
+    /// Enable sub-function duplicate detection (if branches, match arms, loop bodies).
+    #[arg(long, short = 's', global = true)]
+    sub_function: bool,
+
+    /// Minimum AST node count for sub-function units.
+    #[arg(long, global = true)]
+    min_sub_nodes: Option<usize>,
 }
 
 #[derive(Clone, clap::ValueEnum)]
@@ -167,6 +175,12 @@ fn main() {
     if cli.exclude_tests {
         config.exclude_tests = true;
     }
+    if cli.sub_function {
+        config.sub_function = true;
+    }
+    if let Some(min_sub_nodes) = cli.min_sub_nodes {
+        config.min_sub_nodes = min_sub_nodes;
+    }
 
     let result = match cargo_dupes::analyze(&config) {
         Ok(r) => r,
@@ -202,6 +216,16 @@ fn main() {
             if !result.near_groups.is_empty() {
                 reporter
                     .report_near(&result.near_groups, &mut writer)
+                    .unwrap();
+            }
+            if !result.sub_exact_groups.is_empty() {
+                reporter
+                    .report_sub_exact(&result.sub_exact_groups, &mut writer)
+                    .unwrap();
+            }
+            if !result.sub_near_groups.is_empty() {
+                reporter
+                    .report_sub_near(&result.sub_near_groups, &mut writer)
                     .unwrap();
             }
         }
