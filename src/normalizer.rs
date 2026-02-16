@@ -968,6 +968,11 @@ fn collect_placeholder_order(
             collect_placeholder_order(pat, order, seen);
             collect_placeholder_order(expr, order, seen);
         }
+        NormalizedNode::MacroCall { args, .. } => {
+            for a in args {
+                collect_placeholder_order(a, order, seen);
+            }
+        }
         NormalizedNode::Literal(_)
         | NormalizedNode::Continue
         | NormalizedNode::PatWild
@@ -1176,6 +1181,10 @@ fn apply_reindex(
         NormalizedNode::LetExpr { pat, expr } => NormalizedNode::LetExpr {
             pat: Box::new(apply_reindex(pat, mapping)),
             expr: Box::new(apply_reindex(expr, mapping)),
+        },
+        NormalizedNode::MacroCall { name, args } => NormalizedNode::MacroCall {
+            name: name.clone(),
+            args: args.iter().map(|a| apply_reindex(a, mapping)).collect(),
         },
         // Leaf nodes that contain no placeholders — clone as-is
         NormalizedNode::Literal(_)
@@ -1733,7 +1742,6 @@ mod tests {
     }
 
     #[test]
-<<<<<<< feat/macro-call-variant
     fn different_macro_names_produce_different_nodes() {
         let n1 = normalize_code_expr("println!(\"hello\")");
         let n2 = normalize_code_expr("eprintln!(\"hello\")");
@@ -1841,7 +1849,9 @@ mod tests {
             let (_, body) = normalize_item_fn(&f);
             assert!(count_nodes(&body) > 0);
         }
-=======
+    }
+
+    #[test]
     fn reindex_remaps_from_zero() {
         // A sub-tree with placeholders starting at index 5
         let node = NormalizedNode::BinaryOp {
@@ -1971,6 +1981,5 @@ mod tests {
         assert_ne!(then1, then2);
         // After re-indexing, they should be equal (both: let $0 = $1 + 1; $0)
         assert_eq!(reindex_placeholders(&then1), reindex_placeholders(&then2));
->>>>>>> main
     }
 }
