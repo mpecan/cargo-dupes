@@ -3,6 +3,14 @@ All notable changes to this project will be documented in this file.
 See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 ---
+## [0.1.6](https://github.com/mpecan/cargo-dupes/compare/cargo-dupes-v0.1.5...cargo-dupes-v0.1.6) (2026-02-16)
+
+
+### Features
+
+* add sub-function duplicate detection ([#14](https://github.com/mpecan/cargo-dupes/issues/14)) ([502e2c7](https://github.com/mpecan/cargo-dupes/commit/502e2c7243d2c7c8d6039b69fe7aa1a664325955))
+* replace opaque macro handling with MacroCall variant ([#13](https://github.com/mpecan/cargo-dupes/issues/13)) ([c396d64](https://github.com/mpecan/cargo-dupes/commit/c396d64cf6d6737f3437f5b5796dad516bd67c1f))
+
 ## [0.1.5](https://github.com/mpecan/cargo-dupes/compare/cargo-dupes-v0.1.4...cargo-dupes-v0.1.5) (2026-02-13)
 
 
