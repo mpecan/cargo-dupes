@@ -738,6 +738,437 @@ pub fn normalize_signature(sig: &syn::Signature, ctx: &mut NormalizationContext)
     }
 }
 
+// ── Placeholder re-indexing ──────────────────────────────────────────────
+
+/// Collects all placeholder occurrences in depth-first order, building
+/// a mapping from (kind, old_index) → new_sequential_index.
+fn collect_placeholder_order(node: &NormalizedNode, order: &mut Vec<(PlaceholderKind, usize)>) {
+    match node {
+        NormalizedNode::Placeholder(kind, idx)
+        | NormalizedNode::PatPlaceholder(kind, idx)
+        | NormalizedNode::TypePlaceholder(kind, idx) => {
+            if !order.contains(&(*kind, *idx)) {
+                order.push((*kind, *idx));
+            }
+        }
+        NormalizedNode::Block(stmts) => {
+            for s in stmts {
+                collect_placeholder_order(s, order);
+            }
+        }
+        NormalizedNode::LetBinding { pattern, ty, init } => {
+            collect_placeholder_order(pattern, order);
+            if let Some(t) = ty {
+                collect_placeholder_order(t, order);
+            }
+            if let Some(i) = init {
+                collect_placeholder_order(i, order);
+            }
+        }
+        NormalizedNode::BinaryOp { left, right, .. } | NormalizedNode::Assign { left, right } => {
+            collect_placeholder_order(left, order);
+            collect_placeholder_order(right, order);
+        }
+        NormalizedNode::UnaryOp { operand, .. } => collect_placeholder_order(operand, order),
+        NormalizedNode::Call { func, args } => {
+            collect_placeholder_order(func, order);
+            for a in args {
+                collect_placeholder_order(a, order);
+            }
+        }
+        NormalizedNode::MethodCall {
+            receiver,
+            method,
+            args,
+        } => {
+            collect_placeholder_order(receiver, order);
+            collect_placeholder_order(method, order);
+            for a in args {
+                collect_placeholder_order(a, order);
+            }
+        }
+        NormalizedNode::FieldAccess { base, field } => {
+            collect_placeholder_order(base, order);
+            collect_placeholder_order(field, order);
+        }
+        NormalizedNode::Index { base, index } => {
+            collect_placeholder_order(base, order);
+            collect_placeholder_order(index, order);
+        }
+        NormalizedNode::Closure { params, body } => {
+            for p in params {
+                collect_placeholder_order(p, order);
+            }
+            collect_placeholder_order(body, order);
+        }
+        NormalizedNode::FnSignature {
+            params,
+            return_type,
+        } => {
+            for p in params {
+                collect_placeholder_order(p, order);
+            }
+            if let Some(r) = return_type {
+                collect_placeholder_order(r, order);
+            }
+        }
+        NormalizedNode::Return(e) | NormalizedNode::Break(e) => {
+            if let Some(e) = e {
+                collect_placeholder_order(e, order);
+            }
+        }
+        NormalizedNode::Reference { expr, .. } => collect_placeholder_order(expr, order),
+        NormalizedNode::Tuple(elems) | NormalizedNode::Array(elems) => {
+            for e in elems {
+                collect_placeholder_order(e, order);
+            }
+        }
+        NormalizedNode::Repeat { elem, len } => {
+            collect_placeholder_order(elem, order);
+            collect_placeholder_order(len, order);
+        }
+        NormalizedNode::Cast { expr, ty } => {
+            collect_placeholder_order(expr, order);
+            collect_placeholder_order(ty, order);
+        }
+        NormalizedNode::StructInit { fields, rest } => {
+            for f in fields {
+                collect_placeholder_order(f, order);
+            }
+            if let Some(r) = rest {
+                collect_placeholder_order(r, order);
+            }
+        }
+        NormalizedNode::Await(e)
+        | NormalizedNode::Try(e)
+        | NormalizedNode::Paren(e)
+        | NormalizedNode::Semi(e) => {
+            collect_placeholder_order(e, order);
+        }
+        NormalizedNode::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            collect_placeholder_order(condition, order);
+            collect_placeholder_order(then_branch, order);
+            if let Some(e) = else_branch {
+                collect_placeholder_order(e, order);
+            }
+        }
+        NormalizedNode::Match { expr, arms } => {
+            collect_placeholder_order(expr, order);
+            for arm in arms {
+                collect_placeholder_order(&arm.pattern, order);
+                if let Some(g) = &arm.guard {
+                    collect_placeholder_order(g, order);
+                }
+                collect_placeholder_order(&arm.body, order);
+            }
+        }
+        NormalizedNode::Loop(body) => collect_placeholder_order(body, order),
+        NormalizedNode::While { condition, body } => {
+            collect_placeholder_order(condition, order);
+            collect_placeholder_order(body, order);
+        }
+        NormalizedNode::ForLoop { pat, iter, body } => {
+            collect_placeholder_order(pat, order);
+            collect_placeholder_order(iter, order);
+            collect_placeholder_order(body, order);
+        }
+        NormalizedNode::PatTuple(elems)
+        | NormalizedNode::PatStruct(elems)
+        | NormalizedNode::PatOr(elems)
+        | NormalizedNode::PatSlice(elems) => {
+            for e in elems {
+                collect_placeholder_order(e, order);
+            }
+        }
+        NormalizedNode::PatLiteral(e) => collect_placeholder_order(e, order),
+        NormalizedNode::PatReference { pat, .. } => collect_placeholder_order(pat, order),
+        NormalizedNode::PatRange { lo, hi } => {
+            if let Some(l) = lo {
+                collect_placeholder_order(l, order);
+            }
+            if let Some(h) = hi {
+                collect_placeholder_order(h, order);
+            }
+        }
+        NormalizedNode::TypeReference { elem, .. } | NormalizedNode::TypeSlice(elem) => {
+            collect_placeholder_order(elem, order);
+        }
+        NormalizedNode::TypeTuple(elems)
+        | NormalizedNode::TypePath(elems)
+        | NormalizedNode::TypeImplTrait(elems) => {
+            for e in elems {
+                collect_placeholder_order(e, order);
+            }
+        }
+        NormalizedNode::TypeArray { elem, len } => {
+            collect_placeholder_order(elem, order);
+            collect_placeholder_order(len, order);
+        }
+        NormalizedNode::FieldValue { name, value } => {
+            collect_placeholder_order(name, order);
+            collect_placeholder_order(value, order);
+        }
+        NormalizedNode::Range { from, to } => {
+            if let Some(f) = from {
+                collect_placeholder_order(f, order);
+            }
+            if let Some(t) = to {
+                collect_placeholder_order(t, order);
+            }
+        }
+        NormalizedNode::Path(segments) => {
+            for s in segments {
+                collect_placeholder_order(s, order);
+            }
+        }
+        NormalizedNode::LetExpr { pat, expr } => {
+            collect_placeholder_order(pat, order);
+            collect_placeholder_order(expr, order);
+        }
+        NormalizedNode::Literal(_)
+        | NormalizedNode::Continue
+        | NormalizedNode::PatWild
+        | NormalizedNode::PatRest
+        | NormalizedNode::TypeInfer
+        | NormalizedNode::TypeUnit
+        | NormalizedNode::TypeNever
+        | NormalizedNode::Opaque => {}
+    }
+}
+
+/// Applies the reindex mapping to a node, returning a new node with remapped indices.
+fn apply_reindex(
+    node: &NormalizedNode,
+    mapping: &HashMap<(PlaceholderKind, usize), usize>,
+) -> NormalizedNode {
+    match node {
+        NormalizedNode::Placeholder(kind, idx) => {
+            let new_idx = mapping.get(&(*kind, *idx)).copied().unwrap_or(*idx);
+            NormalizedNode::Placeholder(*kind, new_idx)
+        }
+        NormalizedNode::PatPlaceholder(kind, idx) => {
+            let new_idx = mapping.get(&(*kind, *idx)).copied().unwrap_or(*idx);
+            NormalizedNode::PatPlaceholder(*kind, new_idx)
+        }
+        NormalizedNode::TypePlaceholder(kind, idx) => {
+            let new_idx = mapping.get(&(*kind, *idx)).copied().unwrap_or(*idx);
+            NormalizedNode::TypePlaceholder(*kind, new_idx)
+        }
+        NormalizedNode::Block(stmts) => {
+            NormalizedNode::Block(stmts.iter().map(|s| apply_reindex(s, mapping)).collect())
+        }
+        NormalizedNode::LetBinding { pattern, ty, init } => NormalizedNode::LetBinding {
+            pattern: Box::new(apply_reindex(pattern, mapping)),
+            ty: ty.as_ref().map(|t| Box::new(apply_reindex(t, mapping))),
+            init: init.as_ref().map(|i| Box::new(apply_reindex(i, mapping))),
+        },
+        NormalizedNode::BinaryOp { op, left, right } => NormalizedNode::BinaryOp {
+            op: op.clone(),
+            left: Box::new(apply_reindex(left, mapping)),
+            right: Box::new(apply_reindex(right, mapping)),
+        },
+        NormalizedNode::UnaryOp { op, operand } => NormalizedNode::UnaryOp {
+            op: op.clone(),
+            operand: Box::new(apply_reindex(operand, mapping)),
+        },
+        NormalizedNode::Call { func, args } => NormalizedNode::Call {
+            func: Box::new(apply_reindex(func, mapping)),
+            args: args.iter().map(|a| apply_reindex(a, mapping)).collect(),
+        },
+        NormalizedNode::MethodCall {
+            receiver,
+            method,
+            args,
+        } => NormalizedNode::MethodCall {
+            receiver: Box::new(apply_reindex(receiver, mapping)),
+            method: Box::new(apply_reindex(method, mapping)),
+            args: args.iter().map(|a| apply_reindex(a, mapping)).collect(),
+        },
+        NormalizedNode::FieldAccess { base, field } => NormalizedNode::FieldAccess {
+            base: Box::new(apply_reindex(base, mapping)),
+            field: Box::new(apply_reindex(field, mapping)),
+        },
+        NormalizedNode::Index { base, index } => NormalizedNode::Index {
+            base: Box::new(apply_reindex(base, mapping)),
+            index: Box::new(apply_reindex(index, mapping)),
+        },
+        NormalizedNode::Closure { params, body } => NormalizedNode::Closure {
+            params: params.iter().map(|p| apply_reindex(p, mapping)).collect(),
+            body: Box::new(apply_reindex(body, mapping)),
+        },
+        NormalizedNode::FnSignature {
+            params,
+            return_type,
+        } => NormalizedNode::FnSignature {
+            params: params.iter().map(|p| apply_reindex(p, mapping)).collect(),
+            return_type: return_type
+                .as_ref()
+                .map(|r| Box::new(apply_reindex(r, mapping))),
+        },
+        NormalizedNode::Return(e) => {
+            NormalizedNode::Return(e.as_ref().map(|e| Box::new(apply_reindex(e, mapping))))
+        }
+        NormalizedNode::Break(e) => {
+            NormalizedNode::Break(e.as_ref().map(|e| Box::new(apply_reindex(e, mapping))))
+        }
+        NormalizedNode::Assign { left, right } => NormalizedNode::Assign {
+            left: Box::new(apply_reindex(left, mapping)),
+            right: Box::new(apply_reindex(right, mapping)),
+        },
+        NormalizedNode::Reference { mutable, expr } => NormalizedNode::Reference {
+            mutable: *mutable,
+            expr: Box::new(apply_reindex(expr, mapping)),
+        },
+        NormalizedNode::Tuple(elems) => {
+            NormalizedNode::Tuple(elems.iter().map(|e| apply_reindex(e, mapping)).collect())
+        }
+        NormalizedNode::Array(elems) => {
+            NormalizedNode::Array(elems.iter().map(|e| apply_reindex(e, mapping)).collect())
+        }
+        NormalizedNode::Repeat { elem, len } => NormalizedNode::Repeat {
+            elem: Box::new(apply_reindex(elem, mapping)),
+            len: Box::new(apply_reindex(len, mapping)),
+        },
+        NormalizedNode::Cast { expr, ty } => NormalizedNode::Cast {
+            expr: Box::new(apply_reindex(expr, mapping)),
+            ty: Box::new(apply_reindex(ty, mapping)),
+        },
+        NormalizedNode::StructInit { fields, rest } => NormalizedNode::StructInit {
+            fields: fields.iter().map(|f| apply_reindex(f, mapping)).collect(),
+            rest: rest.as_ref().map(|r| Box::new(apply_reindex(r, mapping))),
+        },
+        NormalizedNode::Await(e) => NormalizedNode::Await(Box::new(apply_reindex(e, mapping))),
+        NormalizedNode::Try(e) => NormalizedNode::Try(Box::new(apply_reindex(e, mapping))),
+        NormalizedNode::Paren(e) => NormalizedNode::Paren(Box::new(apply_reindex(e, mapping))),
+        NormalizedNode::Semi(e) => NormalizedNode::Semi(Box::new(apply_reindex(e, mapping))),
+        NormalizedNode::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => NormalizedNode::If {
+            condition: Box::new(apply_reindex(condition, mapping)),
+            then_branch: Box::new(apply_reindex(then_branch, mapping)),
+            else_branch: else_branch
+                .as_ref()
+                .map(|e| Box::new(apply_reindex(e, mapping))),
+        },
+        NormalizedNode::Match { expr, arms } => NormalizedNode::Match {
+            expr: Box::new(apply_reindex(expr, mapping)),
+            arms: arms
+                .iter()
+                .map(|arm| MatchArm {
+                    pattern: apply_reindex(&arm.pattern, mapping),
+                    guard: arm
+                        .guard
+                        .as_ref()
+                        .map(|g| Box::new(apply_reindex(g, mapping))),
+                    body: Box::new(apply_reindex(&arm.body, mapping)),
+                })
+                .collect(),
+        },
+        NormalizedNode::Loop(body) => NormalizedNode::Loop(Box::new(apply_reindex(body, mapping))),
+        NormalizedNode::While { condition, body } => NormalizedNode::While {
+            condition: Box::new(apply_reindex(condition, mapping)),
+            body: Box::new(apply_reindex(body, mapping)),
+        },
+        NormalizedNode::ForLoop { pat, iter, body } => NormalizedNode::ForLoop {
+            pat: Box::new(apply_reindex(pat, mapping)),
+            iter: Box::new(apply_reindex(iter, mapping)),
+            body: Box::new(apply_reindex(body, mapping)),
+        },
+        NormalizedNode::PatTuple(elems) => {
+            NormalizedNode::PatTuple(elems.iter().map(|e| apply_reindex(e, mapping)).collect())
+        }
+        NormalizedNode::PatStruct(elems) => {
+            NormalizedNode::PatStruct(elems.iter().map(|e| apply_reindex(e, mapping)).collect())
+        }
+        NormalizedNode::PatOr(elems) => {
+            NormalizedNode::PatOr(elems.iter().map(|e| apply_reindex(e, mapping)).collect())
+        }
+        NormalizedNode::PatSlice(elems) => {
+            NormalizedNode::PatSlice(elems.iter().map(|e| apply_reindex(e, mapping)).collect())
+        }
+        NormalizedNode::PatLiteral(e) => {
+            NormalizedNode::PatLiteral(Box::new(apply_reindex(e, mapping)))
+        }
+        NormalizedNode::PatReference { mutable, pat } => NormalizedNode::PatReference {
+            mutable: *mutable,
+            pat: Box::new(apply_reindex(pat, mapping)),
+        },
+        NormalizedNode::PatRange { lo, hi } => NormalizedNode::PatRange {
+            lo: lo.as_ref().map(|l| Box::new(apply_reindex(l, mapping))),
+            hi: hi.as_ref().map(|h| Box::new(apply_reindex(h, mapping))),
+        },
+        NormalizedNode::TypeReference { mutable, elem } => NormalizedNode::TypeReference {
+            mutable: *mutable,
+            elem: Box::new(apply_reindex(elem, mapping)),
+        },
+        NormalizedNode::TypeSlice(elem) => {
+            NormalizedNode::TypeSlice(Box::new(apply_reindex(elem, mapping)))
+        }
+        NormalizedNode::TypeTuple(elems) => {
+            NormalizedNode::TypeTuple(elems.iter().map(|e| apply_reindex(e, mapping)).collect())
+        }
+        NormalizedNode::TypePath(elems) => {
+            NormalizedNode::TypePath(elems.iter().map(|e| apply_reindex(e, mapping)).collect())
+        }
+        NormalizedNode::TypeImplTrait(elems) => {
+            NormalizedNode::TypeImplTrait(elems.iter().map(|e| apply_reindex(e, mapping)).collect())
+        }
+        NormalizedNode::TypeArray { elem, len } => NormalizedNode::TypeArray {
+            elem: Box::new(apply_reindex(elem, mapping)),
+            len: Box::new(apply_reindex(len, mapping)),
+        },
+        NormalizedNode::FieldValue { name, value } => NormalizedNode::FieldValue {
+            name: Box::new(apply_reindex(name, mapping)),
+            value: Box::new(apply_reindex(value, mapping)),
+        },
+        NormalizedNode::Range { from, to } => NormalizedNode::Range {
+            from: from.as_ref().map(|f| Box::new(apply_reindex(f, mapping))),
+            to: to.as_ref().map(|t| Box::new(apply_reindex(t, mapping))),
+        },
+        NormalizedNode::Path(segments) => {
+            NormalizedNode::Path(segments.iter().map(|s| apply_reindex(s, mapping)).collect())
+        }
+        NormalizedNode::LetExpr { pat, expr } => NormalizedNode::LetExpr {
+            pat: Box::new(apply_reindex(pat, mapping)),
+            expr: Box::new(apply_reindex(expr, mapping)),
+        },
+        // Leaf nodes that contain no placeholders — clone as-is
+        NormalizedNode::Literal(_)
+        | NormalizedNode::Continue
+        | NormalizedNode::PatWild
+        | NormalizedNode::PatRest
+        | NormalizedNode::TypeInfer
+        | NormalizedNode::TypeUnit
+        | NormalizedNode::TypeNever
+        | NormalizedNode::Opaque => node.clone(),
+    }
+}
+
+/// Re-index all placeholders in a sub-tree so that indices start from 0
+/// per kind, assigned by first-occurrence depth-first order.
+/// This allows comparing sub-trees extracted from different function contexts.
+pub fn reindex_placeholders(node: &NormalizedNode) -> NormalizedNode {
+    let mut order = Vec::new();
+    collect_placeholder_order(node, &mut order);
+
+    // Build mapping: (kind, old_index) → new sequential index per kind
+    let mut counters: HashMap<PlaceholderKind, usize> = HashMap::new();
+    let mut mapping: HashMap<(PlaceholderKind, usize), usize> = HashMap::new();
+    for (kind, old_idx) in order {
+        let counter = counters.entry(kind).or_insert(0);
+        mapping.insert((kind, old_idx), *counter);
+        *counter += 1;
+    }
+
+    apply_reindex(node, &mapping)
+}
+
 // ── Public entry points ──────────────────────────────────────────────────
 
 /// Normalize a top-level function.
@@ -1251,5 +1682,137 @@ mod tests {
             NormalizedNode::Block(stmts) => assert!(stmts.is_empty()),
             _ => panic!("Expected empty Block"),
         }
+    }
+
+    #[test]
+    fn reindex_remaps_from_zero() {
+        // A sub-tree with placeholders starting at index 5
+        let node = NormalizedNode::BinaryOp {
+            op: BinOpKind::Add,
+            left: Box::new(NormalizedNode::Placeholder(PlaceholderKind::Variable, 5)),
+            right: Box::new(NormalizedNode::Placeholder(PlaceholderKind::Variable, 8)),
+        };
+        let reindexed = reindex_placeholders(&node);
+        let expected = NormalizedNode::BinaryOp {
+            op: BinOpKind::Add,
+            left: Box::new(NormalizedNode::Placeholder(PlaceholderKind::Variable, 0)),
+            right: Box::new(NormalizedNode::Placeholder(PlaceholderKind::Variable, 1)),
+        };
+        assert_eq!(reindexed, expected);
+    }
+
+    #[test]
+    fn reindex_preserves_same_placeholder_identity() {
+        // Same placeholder used twice should get same new index
+        let node = NormalizedNode::BinaryOp {
+            op: BinOpKind::Add,
+            left: Box::new(NormalizedNode::Placeholder(PlaceholderKind::Variable, 3)),
+            right: Box::new(NormalizedNode::Placeholder(PlaceholderKind::Variable, 3)),
+        };
+        let reindexed = reindex_placeholders(&node);
+        let expected = NormalizedNode::BinaryOp {
+            op: BinOpKind::Add,
+            left: Box::new(NormalizedNode::Placeholder(PlaceholderKind::Variable, 0)),
+            right: Box::new(NormalizedNode::Placeholder(PlaceholderKind::Variable, 0)),
+        };
+        assert_eq!(reindexed, expected);
+    }
+
+    #[test]
+    fn reindex_makes_equivalent_subtrees_equal() {
+        // Two sub-trees from different contexts that are structurally identical
+        // Context 1: variables start at index 2
+        let subtree1 = NormalizedNode::Block(vec![
+            NormalizedNode::LetBinding {
+                pattern: Box::new(NormalizedNode::PatPlaceholder(PlaceholderKind::Variable, 2)),
+                ty: None,
+                init: Some(Box::new(NormalizedNode::BinaryOp {
+                    op: BinOpKind::Add,
+                    left: Box::new(NormalizedNode::Placeholder(PlaceholderKind::Variable, 0)),
+                    right: Box::new(NormalizedNode::Literal(LiteralKind::Int)),
+                })),
+            },
+            NormalizedNode::Placeholder(PlaceholderKind::Variable, 2),
+        ]);
+        // Context 2: variables start at index 7
+        let subtree2 = NormalizedNode::Block(vec![
+            NormalizedNode::LetBinding {
+                pattern: Box::new(NormalizedNode::PatPlaceholder(PlaceholderKind::Variable, 7)),
+                ty: None,
+                init: Some(Box::new(NormalizedNode::BinaryOp {
+                    op: BinOpKind::Add,
+                    left: Box::new(NormalizedNode::Placeholder(PlaceholderKind::Variable, 5)),
+                    right: Box::new(NormalizedNode::Literal(LiteralKind::Int)),
+                })),
+            },
+            NormalizedNode::Placeholder(PlaceholderKind::Variable, 7),
+        ]);
+
+        assert_ne!(subtree1, subtree2);
+        assert_eq!(
+            reindex_placeholders(&subtree1),
+            reindex_placeholders(&subtree2)
+        );
+    }
+
+    #[test]
+    fn reindex_handles_multiple_placeholder_kinds() {
+        let node = NormalizedNode::Call {
+            func: Box::new(NormalizedNode::Placeholder(PlaceholderKind::Function, 3)),
+            args: vec![
+                NormalizedNode::Placeholder(PlaceholderKind::Variable, 5),
+                NormalizedNode::Cast {
+                    expr: Box::new(NormalizedNode::Placeholder(PlaceholderKind::Variable, 5)),
+                    ty: Box::new(NormalizedNode::TypePlaceholder(PlaceholderKind::Type, 2)),
+                },
+            ],
+        };
+        let reindexed = reindex_placeholders(&node);
+        let expected = NormalizedNode::Call {
+            func: Box::new(NormalizedNode::Placeholder(PlaceholderKind::Function, 0)),
+            args: vec![
+                NormalizedNode::Placeholder(PlaceholderKind::Variable, 0),
+                NormalizedNode::Cast {
+                    expr: Box::new(NormalizedNode::Placeholder(PlaceholderKind::Variable, 0)),
+                    ty: Box::new(NormalizedNode::TypePlaceholder(PlaceholderKind::Type, 0)),
+                },
+            ],
+        };
+        assert_eq!(reindexed, expected);
+    }
+
+    #[test]
+    fn reindex_from_real_function_subtrees() {
+        // In fn1, if-then uses x (idx 0) and y (idx 1) — then introduces z (idx 2)
+        let f1 =
+            parse_fn("fn foo(x: i32, y: i32) -> i32 { if x > 0 { let z = y + 1; z } else { x } }");
+        // In fn2, if-then uses a (idx 0) then introduces c (idx 2), uses b (idx 1) — same structure
+        // But here the then_branch references a(0) and b(1) differently
+        let f2 = parse_fn(
+            "fn bar(unused: i32, a: i32, b: i32) -> i32 { if a > 0 { let c = b + 1; c } else { a } }",
+        );
+        let (_, body1) = normalize_item_fn(&f1);
+        let (_, body2) = normalize_item_fn(&f2);
+
+        // Extract the then_branch from each
+        let then1 = match &body1 {
+            NormalizedNode::Block(stmts) => match &stmts[0] {
+                NormalizedNode::If { then_branch, .. } => then_branch.as_ref().clone(),
+                _ => panic!("expected If"),
+            },
+            _ => panic!("expected Block"),
+        };
+        let then2 = match &body2 {
+            NormalizedNode::Block(stmts) => match &stmts[0] {
+                NormalizedNode::If { then_branch, .. } => then_branch.as_ref().clone(),
+                _ => panic!("expected If"),
+            },
+            _ => panic!("expected Block"),
+        };
+
+        // Before re-indexing, they have different placeholder indices due to different parent contexts
+        assert_ne!(then1, then2);
+        // After re-indexing, they should be equal (both: let $0 = $1 + 1; $0)
+        assert_eq!(reindex_placeholders(&then1), reindex_placeholders(&then2));
     }
 }

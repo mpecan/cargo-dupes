@@ -27,6 +27,11 @@ pub struct DuplicationStats {
     pub near_duplicate_units: usize,
     pub exact_duplicate_lines: usize,
     pub near_duplicate_lines: usize,
+    // Sub-function stats
+    pub sub_exact_groups: usize,
+    pub sub_exact_units: usize,
+    pub sub_near_groups: usize,
+    pub sub_near_units: usize,
 }
 
 impl DuplicationStats {
@@ -239,7 +244,27 @@ pub fn compute_stats(
         near_duplicate_units: near_groups.iter().map(|g| g.members.len()).sum(),
         exact_duplicate_lines: exact_groups.iter().map(group_line_count).sum(),
         near_duplicate_lines: near_groups.iter().map(group_line_count).sum(),
+        sub_exact_groups: 0,
+        sub_exact_units: 0,
+        sub_near_groups: 0,
+        sub_near_units: 0,
     }
+}
+
+/// Compute duplication statistics including sub-function results.
+pub fn compute_stats_with_sub(
+    units: &[CodeUnit],
+    exact_groups: &[DuplicateGroup],
+    near_groups: &[DuplicateGroup],
+    sub_exact_groups: &[DuplicateGroup],
+    sub_near_groups: &[DuplicateGroup],
+) -> DuplicationStats {
+    let mut stats = compute_stats(units, exact_groups, near_groups);
+    stats.sub_exact_groups = sub_exact_groups.len();
+    stats.sub_exact_units = sub_exact_groups.iter().map(|g| g.members.len()).sum();
+    stats.sub_near_groups = sub_near_groups.len();
+    stats.sub_near_units = sub_near_groups.iter().map(|g| g.members.len()).sum();
+    stats
 }
 
 // ── Union-Find helpers ──────────────────────────────────────────────────
@@ -492,6 +517,10 @@ mod tests {
             near_duplicate_units: 3,
             exact_duplicate_lines: 50,
             near_duplicate_lines: 30,
+            sub_exact_groups: 0,
+            sub_exact_units: 0,
+            sub_near_groups: 0,
+            sub_near_units: 0,
         };
         assert!((stats.exact_duplicate_percent() - 25.0).abs() < f64::EPSILON);
         assert!((stats.near_duplicate_percent() - 15.0).abs() < f64::EPSILON);
@@ -508,6 +537,10 @@ mod tests {
             near_duplicate_units: 0,
             exact_duplicate_lines: 0,
             near_duplicate_lines: 0,
+            sub_exact_groups: 0,
+            sub_exact_units: 0,
+            sub_near_groups: 0,
+            sub_near_units: 0,
         };
         assert!((stats.exact_duplicate_percent() - 0.0).abs() < f64::EPSILON);
         assert!((stats.near_duplicate_percent() - 0.0).abs() < f64::EPSILON);

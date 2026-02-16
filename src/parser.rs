@@ -13,6 +13,11 @@ pub enum CodeUnitKind {
     Closure,
     ImplBlock,
     TraitImplBlock,
+    // Sub-function kinds
+    IfBranch,
+    MatchArm,
+    LoopBody,
+    Block,
 }
 
 impl std::fmt::Display for CodeUnitKind {
@@ -23,6 +28,10 @@ impl std::fmt::Display for CodeUnitKind {
             CodeUnitKind::Closure => write!(f, "closure"),
             CodeUnitKind::ImplBlock => write!(f, "impl block"),
             CodeUnitKind::TraitImplBlock => write!(f, "trait impl block"),
+            CodeUnitKind::IfBranch => write!(f, "if branch"),
+            CodeUnitKind::MatchArm => write!(f, "match arm"),
+            CodeUnitKind::LoopBody => write!(f, "loop body"),
+            CodeUnitKind::Block => write!(f, "block"),
         }
     }
 }
@@ -39,6 +48,8 @@ pub struct CodeUnit {
     pub body: NormalizedNode,
     pub fingerprint: Fingerprint,
     pub node_count: usize,
+    /// For sub-function units, the name of the parent function.
+    pub parent_name: Option<String>,
 }
 
 /// Check if attributes contain `#[test]`.
@@ -115,6 +126,7 @@ impl CodeUnitExtractor {
             body,
             fingerprint,
             node_count,
+            parent_name: None,
         });
     }
 }
@@ -224,6 +236,7 @@ impl<'ast> Visit<'ast> for CodeUnitExtractor {
                 body: normalized,
                 fingerprint,
                 node_count,
+                parent_name: None,
             });
         }
 

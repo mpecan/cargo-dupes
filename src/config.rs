@@ -23,6 +23,10 @@ pub struct Config {
     pub min_lines: usize,
     /// Exclude test code (#[test] functions and #[cfg(test)] modules).
     pub exclude_tests: bool,
+    /// Enable sub-function duplicate detection.
+    pub sub_function: bool,
+    /// Minimum number of AST nodes for a sub-function unit to be analyzed.
+    pub min_sub_nodes: usize,
     /// Root path to analyze.
     pub root: PathBuf,
 }
@@ -39,6 +43,8 @@ impl Default for Config {
             max_near_percent: None,
             min_lines: 0,
             exclude_tests: false,
+            sub_function: false,
+            min_sub_nodes: 5,
             root: PathBuf::from("."),
         }
     }
@@ -57,6 +63,8 @@ struct FileConfig {
     max_near_percent: Option<f64>,
     min_lines: Option<usize>,
     exclude_tests: Option<bool>,
+    sub_function: Option<bool>,
+    min_sub_nodes: Option<usize>,
 }
 
 /// Cargo.toml metadata section.
@@ -141,6 +149,12 @@ impl Config {
         }
         if let Some(v) = fc.exclude_tests {
             self.exclude_tests = v;
+        }
+        if let Some(v) = fc.sub_function {
+            self.sub_function = v;
+        }
+        if let Some(v) = fc.min_sub_nodes {
+            self.min_sub_nodes = v;
         }
     }
 }

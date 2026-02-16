@@ -34,6 +34,18 @@ struct JsonStats {
     near_duplicate_lines: usize,
     exact_duplicate_percent: f64,
     near_duplicate_percent: f64,
+    #[serde(skip_serializing_if = "is_zero")]
+    sub_exact_groups: usize,
+    #[serde(skip_serializing_if = "is_zero")]
+    sub_exact_units: usize,
+    #[serde(skip_serializing_if = "is_zero")]
+    sub_near_groups: usize,
+    #[serde(skip_serializing_if = "is_zero")]
+    sub_near_units: usize,
+}
+
+fn is_zero(v: &usize) -> bool {
+    *v == 0
 }
 
 #[derive(serde::Serialize)]
@@ -66,6 +78,10 @@ impl Reporter for JsonReporter {
             near_duplicate_lines: stats.near_duplicate_lines,
             exact_duplicate_percent: stats.exact_duplicate_percent(),
             near_duplicate_percent: stats.near_duplicate_percent(),
+            sub_exact_groups: stats.sub_exact_groups,
+            sub_exact_units: stats.sub_exact_units,
+            sub_near_groups: stats.sub_near_groups,
+            sub_near_units: stats.sub_near_units,
         };
         let json = serde_json::to_string_pretty(&json_stats).map_err(io::Error::other)?;
         writeln!(writer, "{json}")
@@ -82,6 +98,26 @@ impl Reporter for JsonReporter {
     }
 
     fn report_near(&self, groups: &[DuplicateGroup], writer: &mut dyn io::Write) -> io::Result<()> {
+        let json_groups: Vec<JsonGroup> = groups.iter().map(|g| self.to_json_group(g)).collect();
+        let json = serde_json::to_string_pretty(&json_groups).map_err(io::Error::other)?;
+        writeln!(writer, "{json}")
+    }
+
+    fn report_sub_exact(
+        &self,
+        groups: &[DuplicateGroup],
+        writer: &mut dyn io::Write,
+    ) -> io::Result<()> {
+        let json_groups: Vec<JsonGroup> = groups.iter().map(|g| self.to_json_group(g)).collect();
+        let json = serde_json::to_string_pretty(&json_groups).map_err(io::Error::other)?;
+        writeln!(writer, "{json}")
+    }
+
+    fn report_sub_near(
+        &self,
+        groups: &[DuplicateGroup],
+        writer: &mut dyn io::Write,
+    ) -> io::Result<()> {
         let json_groups: Vec<JsonGroup> = groups.iter().map(|g| self.to_json_group(g)).collect();
         let json = serde_json::to_string_pretty(&json_groups).map_err(io::Error::other)?;
         writeln!(writer, "{json}")
@@ -127,6 +163,7 @@ mod tests {
             body: NormalizedNode::Block(vec![]),
             fingerprint: Fingerprint::from_node(&NormalizedNode::Opaque),
             node_count: 10,
+            parent_name: None,
         }
     }
 
@@ -142,6 +179,10 @@ mod tests {
             near_duplicate_units: 5,
             exact_duplicate_lines: 30,
             near_duplicate_lines: 20,
+            sub_exact_groups: 0,
+            sub_exact_units: 0,
+            sub_near_groups: 0,
+            sub_near_units: 0,
         };
         let mut buf = Vec::new();
         reporter.report_stats(&stats, &mut buf).unwrap();

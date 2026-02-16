@@ -11,4 +11,14 @@ pub trait Reporter {
     fn report_exact(&self, groups: &[DuplicateGroup], writer: &mut dyn io::Write)
     -> io::Result<()>;
     fn report_near(&self, groups: &[DuplicateGroup], writer: &mut dyn io::Write) -> io::Result<()>;
+    fn report_sub_exact(
+        &self,
+        groups: &[DuplicateGroup],
+        writer: &mut dyn io::Write,
+    ) -> io::Result<()>;
+    fn report_sub_near(
+        &self,
+        groups: &[DuplicateGroup],
+        writer: &mut dyn io::Write,
+    ) -> io::Result<()>;
 }
