@@ -105,10 +105,7 @@ impl Reporter for TextReporter {
         writeln!(writer)?;
 
         for (i, group) in groups.iter().enumerate() {
-            let fp = group
-                .fingerprint
-                .map(|f| f.to_hex())
-                .unwrap_or_else(|| "unknown".to_string());
+            let fp = group.fingerprint.to_hex();
             writeln!(
                 writer,
                 "Group {} (fingerprint: {}, {} members):",
@@ -143,10 +140,7 @@ impl Reporter for TextReporter {
         writeln!(writer)?;
 
         for (i, group) in groups.iter().enumerate() {
-            let fp = group
-                .fingerprint
-                .map(|f| f.to_hex())
-                .unwrap_or_else(|| "unknown".to_string());
+            let fp = group.fingerprint.to_hex();
             writeln!(
                 writer,
                 "Group {} (fingerprint: {}, similarity: {:.0}%, {} members):",
@@ -185,10 +179,7 @@ impl Reporter for TextReporter {
         writeln!(writer)?;
 
         for (i, group) in groups.iter().enumerate() {
-            let fp = group
-                .fingerprint
-                .map(|f| f.to_hex())
-                .unwrap_or_else(|| "unknown".to_string());
+            let fp = group.fingerprint.to_hex();
             writeln!(
                 writer,
                 "Group {} (fingerprint: {}, {} members):",
@@ -232,10 +223,7 @@ impl Reporter for TextReporter {
         writeln!(writer)?;
 
         for (i, group) in groups.iter().enumerate() {
-            let fp = group
-                .fingerprint
-                .map(|f| f.to_hex())
-                .unwrap_or_else(|| "unknown".to_string());
+            let fp = group.fingerprint.to_hex();
             writeln!(
                 writer,
                 "Group {} (fingerprint: {}, similarity: {:.0}%, {} members):",
@@ -270,9 +258,9 @@ impl Reporter for TextReporter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::code_unit::{CodeUnit, CodeUnitKind};
     use crate::fingerprint::Fingerprint;
-    use crate::normalizer::NormalizedNode;
-    use crate::parser::{CodeUnit, CodeUnitKind};
+    use crate::node::NormalizedNode;
     use std::path::PathBuf;
 
     fn make_unit(name: &str, file: &str, line_start: usize, line_end: usize) -> CodeUnit {
@@ -328,7 +316,7 @@ mod tests {
     fn text_report_exact_with_groups() {
         let reporter = TextReporter::new(Some(PathBuf::from("/project")));
         let group = DuplicateGroup {
-            fingerprint: Some(Fingerprint::from_node(&NormalizedNode::Opaque)),
+            fingerprint: Fingerprint::from_node(&NormalizedNode::Opaque),
             members: vec![
                 make_unit("foo", "/project/src/a.rs", 10, 20),
                 make_unit("bar", "/project/src/b.rs", 30, 40),
@@ -350,7 +338,7 @@ mod tests {
         let reporter = TextReporter::new(None);
         let fp = Fingerprint::from_node(&NormalizedNode::Block(vec![]));
         let group = DuplicateGroup {
-            fingerprint: Some(fp),
+            fingerprint: fp,
             members: vec![
                 make_unit("process", "/src/a.rs", 10, 25),
                 make_unit("compute", "/src/b.rs", 30, 45),

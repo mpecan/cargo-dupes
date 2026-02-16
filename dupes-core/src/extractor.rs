@@ -1,5 +1,5 @@
-use crate::normalizer::{self, NormalizedNode};
-use crate::parser::CodeUnitKind;
+use crate::code_unit::CodeUnitKind;
+use crate::node::{self, NormalizedNode};
 
 /// A sub-unit extracted from a normalized function body.
 pub struct SubUnit {
@@ -290,8 +290,8 @@ fn try_add(
     min_node_count: usize,
     results: &mut Vec<SubUnit>,
 ) {
-    let reindexed = normalizer::reindex_placeholders(node);
-    let node_count = normalizer::count_nodes(&reindexed);
+    let reindexed = node::reindex_placeholders(node);
+    let node_count = node::count_nodes(&reindexed);
     if node_count >= min_node_count {
         results.push(SubUnit {
             kind,
@@ -299,155 +299,5 @@ fn try_add(
             node_count,
             description: description.to_string(),
         });
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::normalizer::{NormalizationContext, normalize_expr, normalize_item_fn};
-
-    fn parse_fn(code: &str) -> syn::ItemFn {
-        syn::parse_str::<syn::ItemFn>(code).unwrap()
-    }
-
-    fn parse_and_extract_body(code: &str) -> NormalizedNode {
-        let f = parse_fn(code);
-        let (_, body) = normalize_item_fn(&f);
-        body
-    }
-
-    #[test]
-    fn extracts_if_branches() {
-        let body = parse_and_extract_body(
-            "fn foo(x: i32) -> i32 { if x > 0 { let y = x + 1; y * 2 } else { let z = x - 1; z * 3 } }",
-        );
-        let subs = extract_sub_units(&body, 1);
-        let if_branches: Vec<_> = subs
-            .iter()
-            .filter(|s| s.kind == CodeUnitKind::IfBranch)
-            .collect();
-        assert_eq!(if_branches.len(), 2); // then + else
-    }
-
-    #[test]
-    fn extracts_match_arms() {
-        let body = parse_and_extract_body(
-            r#"fn foo(x: i32) -> i32 {
-                match x {
-                    0 => { let a = 1; a + 1 },
-                    1 => { let b = 2; b + 2 },
-                    _ => { let c = 3; c + 3 },
-                }
-            }"#,
-        );
-        let subs = extract_sub_units(&body, 1);
-        let match_arms: Vec<_> = subs
-            .iter()
-            .filter(|s| s.kind == CodeUnitKind::MatchArm)
-            .collect();
-        assert_eq!(match_arms.len(), 3);
-    }
-
-    #[test]
-    fn extracts_loop_bodies() {
-        let body = parse_and_extract_body(
-            "fn foo(x: i32) { for i in 0..10 { let y = i + x; let _ = y; } }",
-        );
-        let subs = extract_sub_units(&body, 1);
-        let loops: Vec<_> = subs
-            .iter()
-            .filter(|s| s.kind == CodeUnitKind::LoopBody)
-            .collect();
-        assert_eq!(loops.len(), 1);
-    }
-
-    #[test]
-    fn respects_min_node_count() {
-        let body =
-            parse_and_extract_body("fn foo(x: i32) -> i32 { if x > 0 { x + 1 } else { x - 1 } }");
-        let subs_low = extract_sub_units(&body, 1);
-        let subs_high = extract_sub_units(&body, 100);
-        assert!(!subs_low.is_empty());
-        assert!(subs_high.is_empty());
-    }
-
-    #[test]
-    fn identical_branches_from_different_functions_match() {
-        // Two functions with identical if-then branches but different variable names
-        let body1 = parse_and_extract_body(
-            "fn foo(unused: i32, x: i32) -> i32 { if x > 0 { let y = x + 1; y * 2 } else { x } }",
-        );
-        let body2 = parse_and_extract_body(
-            "fn bar(a: i32) -> i32 { if a > 0 { let b = a + 1; b * 2 } else { a } }",
-        );
-
-        let subs1 = extract_sub_units(&body1, 1);
-        let subs2 = extract_sub_units(&body2, 1);
-
-        let then1 = subs1
-            .iter()
-            .find(|s| s.description == "if-then branch")
-            .unwrap();
-        let then2 = subs2
-            .iter()
-            .find(|s| s.description == "if-then branch")
-            .unwrap();
-
-        // After re-indexing (done by extract_sub_units), they should be structurally identical
-        assert_eq!(then1.node, then2.node);
-    }
-
-    #[test]
-    fn sub_units_are_reindexed() {
-        // Verify that extracted sub-units have placeholder indices starting from 0
-        let body = parse_and_extract_body(
-            "fn foo(a: i32, b: i32, c: i32) -> i32 { if c > 0 { let d = c + 1; d } else { c } }",
-        );
-        let subs = extract_sub_units(&body, 1);
-        let then_branch = subs
-            .iter()
-            .find(|s| s.description == "if-then branch")
-            .unwrap();
-
-        // The then branch uses 'c' and 'd' from parent context.
-        // After re-indexing, these should become 0 and 1 (not 2 and 3).
-        // Check by comparing with a hand-built expected tree.
-        let mut ctx = NormalizationContext::new();
-        let fresh_expr = normalize_expr(
-            &syn::parse_str::<syn::Expr>("{ let d = c + 1; d }").unwrap(),
-            &mut ctx,
-        );
-        let reindexed_fresh = normalizer::reindex_placeholders(&fresh_expr);
-        assert_eq!(then_branch.node, reindexed_fresh);
-    }
-
-    #[test]
-    fn nested_structures_extracted_recursively() {
-        let body = parse_and_extract_body(
-            r#"fn foo(x: i32) -> i32 {
-                if x > 0 {
-                    for i in 0..x {
-                        let y = i + 1;
-                        let _ = y;
-                    }
-                    x
-                } else {
-                    x
-                }
-            }"#,
-        );
-        let subs = extract_sub_units(&body, 1);
-        // Should find: if-then branch, if-else branch, for body (nested inside if-then)
-        let if_branches: Vec<_> = subs
-            .iter()
-            .filter(|s| s.kind == CodeUnitKind::IfBranch)
-            .collect();
-        let loops: Vec<_> = subs
-            .iter()
-            .filter(|s| s.kind == CodeUnitKind::LoopBody)
-            .collect();
-        assert_eq!(if_branches.len(), 2);
-        assert_eq!(loops.len(), 1);
     }
 }

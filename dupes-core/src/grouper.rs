@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::code_unit::{CodeUnit, CodeUnitKind};
 use crate::fingerprint::Fingerprint;
-use crate::parser::{CodeUnit, CodeUnitKind};
 use crate::similarity;
 
 /// A group of duplicate code units.
@@ -9,7 +9,7 @@ use crate::similarity;
 pub struct DuplicateGroup {
     /// Shared fingerprint for exact duplicates, or composite fingerprint
     /// (derived from sorted member fingerprints) for near-duplicate groups.
-    pub fingerprint: Option<Fingerprint>,
+    pub fingerprint: Fingerprint,
     /// The code units in this group.
     pub members: Vec<CodeUnit>,
     /// Similarity score (1.0 for exact duplicates).
@@ -69,7 +69,7 @@ pub fn group_exact_duplicates(units: &[CodeUnit]) -> Vec<DuplicateGroup> {
         .into_iter()
         .filter(|(_, members)| members.len() > 1)
         .map(|(fp, members)| DuplicateGroup {
-            fingerprint: Some(fp),
+            fingerprint: fp,
             members,
             similarity: 1.0,
         })
@@ -189,7 +189,7 @@ pub fn find_near_duplicates(
             let composite_fp = Fingerprint::from_fingerprints(&member_fps);
 
             DuplicateGroup {
-                fingerprint: Some(composite_fp),
+                fingerprint: composite_fp,
                 members,
                 similarity: if min_score.is_infinite() {
                     threshold
@@ -287,223 +287,11 @@ fn union(parent: &mut [usize], i: usize, j: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser;
-    use std::fs;
-    use tempfile::TempDir;
-
-    fn make_units(code: &str) -> Vec<CodeUnit> {
-        let tmp = TempDir::new().unwrap();
-        let file = tmp.path().join("test.rs");
-        fs::write(&file, code).unwrap();
-        parser::parse_file(&file, 1, 0, false).unwrap()
-    }
-
-    #[test]
-    fn exact_duplicates_grouped() {
-        let units = make_units(
-            r#"
-            fn foo(x: i32) -> i32 {
-                let y = x + 1;
-                y * 2
-            }
-            fn bar(a: i32) -> i32 {
-                let b = a + 1;
-                b * 2
-            }
-            fn unique(x: i32) -> i32 {
-                x * x * x
-            }
-            "#,
-        );
-        let groups = group_exact_duplicates(&units);
-        assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].members.len(), 2);
-        assert!((groups[0].similarity - 1.0).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn no_duplicates_no_groups() {
-        let units = make_units(
-            r#"
-            fn add(x: i32) -> i32 { x + 1 }
-            fn mul(x: i32) -> i32 { x * 2 }
-            fn sub(x: i32) -> i32 { x - 3 }
-            "#,
-        );
-        let groups = group_exact_duplicates(&units);
-        assert!(groups.is_empty());
-    }
-
-    #[test]
-    fn multiple_exact_groups() {
-        let units = make_units(
-            r#"
-            fn a1(x: i32) -> i32 { x + 1 }
-            fn a2(y: i32) -> i32 { y + 1 }
-            fn b1(x: i32) -> i32 { x * 2 }
-            fn b2(y: i32) -> i32 { y * 2 }
-            "#,
-        );
-        let groups = group_exact_duplicates(&units);
-        assert_eq!(groups.len(), 2);
-    }
-
-    #[test]
-    fn near_duplicates_found() {
-        let units = make_units(
-            r#"
-            fn process(data: i32) -> i32 {
-                let a = data + 1;
-                let b = a * 2;
-                let c = b - 3;
-                a + b + c
-            }
-            fn compute(value: i32) -> i32 {
-                let a = value + 1;
-                let b = a * 2;
-                let c = b - 4;
-                a + b + c
-            }
-            "#,
-        );
-        let exact = group_exact_duplicates(&units);
-        let exact_fps: Vec<_> = exact.iter().filter_map(|g| g.fingerprint).collect();
-        let near = find_near_duplicates(&units, 0.7, &exact_fps);
-        // If they're exact they won't be in near, if slightly different they'll be near
-        assert!(exact.len() + near.len() >= 1);
-    }
-
-    #[test]
-    fn stats_computation() {
-        let units = make_units(
-            r#"
-            fn a(x: i32) -> i32 { x + 1 }
-            fn b(y: i32) -> i32 { y + 1 }
-            fn c(x: i32) -> i32 { x * 2 }
-            "#,
-        );
-        let exact = group_exact_duplicates(&units);
-        let stats = compute_stats(&units, &exact, &[]);
-        assert_eq!(stats.total_code_units, 3);
-        assert_eq!(stats.exact_duplicate_groups, 1);
-        assert_eq!(stats.exact_duplicate_units, 2);
-        assert!(stats.total_lines > 0);
-    }
 
     #[test]
     fn empty_input_no_groups() {
         let groups = group_exact_duplicates(&[]);
         assert!(groups.is_empty());
-    }
-
-    #[test]
-    fn single_unit_no_groups() {
-        let units = make_units("fn solo(x: i32) -> i32 { x + 1 }");
-        let groups = group_exact_duplicates(&units);
-        assert!(groups.is_empty());
-    }
-
-    #[test]
-    fn exact_groups_sorted_by_size() {
-        let units = make_units(
-            r#"
-            fn a1(x: i32) -> i32 { x + 1 }
-            fn a2(y: i32) -> i32 { y + 1 }
-            fn a3(z: i32) -> i32 { z + 1 }
-            fn b1(x: i32) -> i32 { x * 2 }
-            fn b2(y: i32) -> i32 { y * 2 }
-            "#,
-        );
-        let groups = group_exact_duplicates(&units);
-        assert_eq!(groups.len(), 2);
-        assert!(groups[0].members.len() >= groups[1].members.len());
-    }
-
-    #[test]
-    fn near_duplicates_exclude_exact() {
-        let units = make_units(
-            r#"
-            fn a(x: i32) -> i32 { x + 1 }
-            fn b(y: i32) -> i32 { y + 1 }
-            "#,
-        );
-        let exact = group_exact_duplicates(&units);
-        let exact_fps: Vec<_> = exact.iter().filter_map(|g| g.fingerprint).collect();
-        let near = find_near_duplicates(&units, 0.7, &exact_fps);
-        // These are exact duplicates, so they should not appear in near
-        assert!(near.is_empty());
-    }
-
-    #[test]
-    fn duplicate_group_has_fingerprint() {
-        let units = make_units(
-            r#"
-            fn a(x: i32) -> i32 { x + 1 }
-            fn b(y: i32) -> i32 { y + 1 }
-            "#,
-        );
-        let groups = group_exact_duplicates(&units);
-        assert_eq!(groups.len(), 1);
-        assert!(groups[0].fingerprint.is_some());
-    }
-
-    #[test]
-    fn stats_with_near_duplicates() {
-        let units = make_units(
-            r#"
-            fn a(x: i32) -> i32 { x + 1 }
-            fn b(y: i32) -> i32 { y * 2 }
-            "#,
-        );
-        let composite_fp = Fingerprint::from_fingerprints(&[Fingerprint::from_node(
-            &crate::normalizer::NormalizedNode::Opaque,
-        )]);
-        let near_group = DuplicateGroup {
-            fingerprint: Some(composite_fp),
-            members: vec![],
-            similarity: 0.85,
-        };
-        let stats = compute_stats(&units, &[], &[near_group]);
-        assert_eq!(stats.total_code_units, units.len());
-        assert_eq!(stats.near_duplicate_groups, 1);
-    }
-
-    #[test]
-    fn stats_includes_line_counts() {
-        let units = make_units(
-            r#"
-            fn foo(x: i32) -> i32 {
-                let y = x + 1;
-                y * 2
-            }
-            fn bar(a: i32) -> i32 {
-                let b = a + 1;
-                b * 2
-            }
-            "#,
-        );
-        let exact = group_exact_duplicates(&units);
-        let stats = compute_stats(&units, &exact, &[]);
-        assert!(stats.exact_duplicate_lines > 0);
-        assert_eq!(stats.near_duplicate_lines, 0);
-    }
-
-    #[test]
-    fn stats_total_lines_computed() {
-        let units = make_units(
-            r#"
-            fn foo(x: i32) -> i32 {
-                let y = x + 1;
-                y * 2
-            }
-            fn bar(a: i32) -> i32 {
-                let b = a + 1;
-                b * 2
-            }
-            "#,
-        );
-        let stats = compute_stats(&units, &[], &[]);
-        assert!(stats.total_lines > 0);
     }
 
     #[test]

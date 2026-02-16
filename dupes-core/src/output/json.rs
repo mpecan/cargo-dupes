@@ -50,8 +50,7 @@ fn is_zero(v: &usize) -> bool {
 
 #[derive(serde::Serialize)]
 struct JsonGroup {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    fingerprint: Option<String>,
+    fingerprint: String,
     similarity: f64,
     members: Vec<JsonMember>,
 }
@@ -127,7 +126,7 @@ impl Reporter for JsonReporter {
 impl JsonReporter {
     fn to_json_group(&self, group: &DuplicateGroup) -> JsonGroup {
         JsonGroup {
-            fingerprint: group.fingerprint.map(|f| f.to_hex()),
+            fingerprint: group.fingerprint.to_hex(),
             similarity: group.similarity,
             members: group
                 .members
@@ -147,9 +146,9 @@ impl JsonReporter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::code_unit::{CodeUnit, CodeUnitKind};
     use crate::fingerprint::Fingerprint;
-    use crate::normalizer::NormalizedNode;
-    use crate::parser::{CodeUnit, CodeUnitKind};
+    use crate::node::NormalizedNode;
     use std::path::PathBuf;
 
     fn make_unit(name: &str, file: &str, line_start: usize, line_end: usize) -> CodeUnit {
@@ -206,7 +205,7 @@ mod tests {
     fn json_report_exact_with_groups() {
         let reporter = JsonReporter::new(Some(PathBuf::from("/project")));
         let group = DuplicateGroup {
-            fingerprint: Some(Fingerprint::from_node(&NormalizedNode::Opaque)),
+            fingerprint: Fingerprint::from_node(&NormalizedNode::Opaque),
             members: vec![
                 make_unit("foo", "/project/src/a.rs", 10, 20),
                 make_unit("bar", "/project/src/b.rs", 30, 40),
@@ -229,7 +228,7 @@ mod tests {
         let reporter = JsonReporter::new(None);
         let fp = Fingerprint::from_node(&NormalizedNode::Block(vec![]));
         let group = DuplicateGroup {
-            fingerprint: Some(fp),
+            fingerprint: fp,
             members: vec![
                 make_unit("process", "/src/a.rs", 10, 25),
                 make_unit("compute", "/src/b.rs", 30, 45),
@@ -250,7 +249,7 @@ mod tests {
     fn json_is_valid() {
         let reporter = JsonReporter::new(Some(PathBuf::from("/project")));
         let group = DuplicateGroup {
-            fingerprint: Some(Fingerprint::from_node(&NormalizedNode::Opaque)),
+            fingerprint: Fingerprint::from_node(&NormalizedNode::Opaque),
             members: vec![make_unit("foo", "/project/src/a.rs", 10, 20)],
             similarity: 1.0,
         };
@@ -266,7 +265,7 @@ mod tests {
         let reporter = JsonReporter::new(Some(PathBuf::from("/home/user/project")));
         let fp = Fingerprint::from_node(&NormalizedNode::Block(vec![]));
         let group = DuplicateGroup {
-            fingerprint: Some(fp),
+            fingerprint: fp,
             members: vec![make_unit("foo", "/home/user/project/src/main.rs", 1, 10)],
             similarity: 0.9,
         };

@@ -91,13 +91,7 @@ pub fn filter_ignored(
 ) -> Vec<DuplicateGroup> {
     groups
         .into_iter()
-        .filter(|g| {
-            if let Some(fp) = g.fingerprint {
-                !is_ignored(ignore_file, &fp)
-            } else {
-                true
-            }
-        })
+        .filter(|g| !is_ignored(ignore_file, &g.fingerprint))
         .collect()
 }
 
@@ -141,13 +135,11 @@ pub fn remove_stale_entries(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::normalizer::NormalizedNode;
+    use crate::node::{LiteralKind, NormalizedNode};
     use tempfile::TempDir;
 
     fn test_fingerprint() -> Fingerprint {
-        Fingerprint::from_node(&NormalizedNode::Literal(
-            crate::normalizer::LiteralKind::Int,
-        ))
+        Fingerprint::from_node(&NormalizedNode::Literal(LiteralKind::Int))
     }
 
     #[test]
@@ -217,12 +209,12 @@ mod tests {
 
         let groups = vec![
             DuplicateGroup {
-                fingerprint: Some(fp),
+                fingerprint: fp,
                 members: vec![],
                 similarity: 1.0,
             },
             DuplicateGroup {
-                fingerprint: Some(Fingerprint::from_node(&NormalizedNode::Opaque)),
+                fingerprint: Fingerprint::from_node(&NormalizedNode::Opaque),
                 members: vec![],
                 similarity: 1.0,
             },
@@ -239,7 +231,7 @@ mod tests {
         add_ignore(&mut ignore, &fp, None, vec![]);
 
         let groups = vec![DuplicateGroup {
-            fingerprint: Some(fp),
+            fingerprint: fp,
             members: vec![],
             similarity: 0.85,
         }];
@@ -256,7 +248,7 @@ mod tests {
         add_ignore(&mut ignore, &other_fp, None, vec![]);
 
         let groups = vec![DuplicateGroup {
-            fingerprint: Some(fp),
+            fingerprint: fp,
             members: vec![],
             similarity: 0.85,
         }];

@@ -2,7 +2,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
-use crate::normalizer::NormalizedNode;
+use crate::node::NormalizedNode;
 
 /// A fingerprint of a normalized AST node, wrapping a u64 hash.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -61,50 +61,6 @@ impl fmt::Display for Fingerprint {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::normalizer::{NormalizationContext, normalize_expr, normalize_item_fn};
-
-    fn parse_fn(code: &str) -> syn::ItemFn {
-        syn::parse_str::<syn::ItemFn>(code).unwrap()
-    }
-
-    fn parse_expr(code: &str) -> syn::Expr {
-        syn::parse_str::<syn::Expr>(code).unwrap()
-    }
-
-    #[test]
-    fn identical_functions_same_fingerprint() {
-        let code1 = "fn foo(x: i32) -> i32 { x + 1 }";
-        let code2 = "fn bar(a: i32) -> i32 { a + 1 }";
-        let f1 = parse_fn(code1);
-        let f2 = parse_fn(code2);
-        let (sig1, body1) = normalize_item_fn(&f1);
-        let (sig2, body2) = normalize_item_fn(&f2);
-        let fp1 = Fingerprint::from_sig_and_body(&sig1, &body1);
-        let fp2 = Fingerprint::from_sig_and_body(&sig2, &body2);
-        assert_eq!(fp1, fp2);
-    }
-
-    #[test]
-    fn different_functions_different_fingerprint() {
-        let code1 = "fn foo(x: i32) -> i32 { x + 1 }";
-        let code2 = "fn foo(x: i32) -> i32 { x * 2 }";
-        let f1 = parse_fn(code1);
-        let f2 = parse_fn(code2);
-        let (sig1, body1) = normalize_item_fn(&f1);
-        let (sig2, body2) = normalize_item_fn(&f2);
-        let fp1 = Fingerprint::from_sig_and_body(&sig1, &body1);
-        let fp2 = Fingerprint::from_sig_and_body(&sig2, &body2);
-        assert_ne!(fp1, fp2);
-    }
-
-    #[test]
-    fn fingerprint_from_node() {
-        let expr = parse_expr("x + 1");
-        let mut ctx = NormalizationContext::new();
-        let node = normalize_expr(&expr, &mut ctx);
-        let fp = Fingerprint::from_node(&node);
-        assert_ne!(fp.value(), 0);
-    }
 
     #[test]
     fn hex_roundtrip() {
@@ -124,32 +80,6 @@ mod tests {
     #[test]
     fn from_hex_invalid() {
         assert!(Fingerprint::from_hex("not_hex").is_none());
-    }
-
-    #[test]
-    fn fingerprint_stability() {
-        // Same code should always produce the same fingerprint
-        let code = "fn foo(x: i32) -> i32 { x + 1 }";
-        let f = parse_fn(code);
-        let (sig1, body1) = normalize_item_fn(&f);
-        let (sig2, body2) = normalize_item_fn(&f);
-        let fp1 = Fingerprint::from_sig_and_body(&sig1, &body1);
-        let fp2 = Fingerprint::from_sig_and_body(&sig2, &body2);
-        assert_eq!(fp1, fp2);
-    }
-
-    #[test]
-    fn fingerprint_discriminates_operators() {
-        let code1 = "fn f(x: i32) -> i32 { x + 1 }";
-        let code2 = "fn f(x: i32) -> i32 { x - 1 }";
-        let f1 = parse_fn(code1);
-        let f2 = parse_fn(code2);
-        let (s1, b1) = normalize_item_fn(&f1);
-        let (s2, b2) = normalize_item_fn(&f2);
-        assert_ne!(
-            Fingerprint::from_sig_and_body(&s1, &b1),
-            Fingerprint::from_sig_and_body(&s2, &b2)
-        );
     }
 
     #[test]
@@ -181,19 +111,5 @@ mod tests {
         let a = Fingerprint::from_fingerprints(&[fp1, fp2]);
         let b = Fingerprint::from_fingerprints(&[fp1, fp2]);
         assert_eq!(a, b);
-    }
-
-    #[test]
-    fn fingerprint_ignores_variable_names() {
-        let code1 = "fn compute(value: i32) -> i32 { value * value + value }";
-        let code2 = "fn calculate(num: i32) -> i32 { num * num + num }";
-        let f1 = parse_fn(code1);
-        let f2 = parse_fn(code2);
-        let (s1, b1) = normalize_item_fn(&f1);
-        let (s2, b2) = normalize_item_fn(&f2);
-        assert_eq!(
-            Fingerprint::from_sig_and_body(&s1, &b1),
-            Fingerprint::from_sig_and_body(&s2, &b2)
-        );
     }
 }
