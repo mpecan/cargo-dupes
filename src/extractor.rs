@@ -11,7 +11,7 @@ pub struct SubUnit {
 
 /// Extract candidate sub-units from a normalized AST node.
 /// Walks the tree recursively and extracts natural compound structures
-/// (if branches, match arm bodies, loop bodies, closure bodies, nested blocks).
+/// (if branches, match arm bodies, loop bodies, closure bodies).
 /// Each sub-tree is re-indexed to canonical placeholder form.
 /// Only sub-trees meeting `min_node_count` are returned.
 pub fn extract_sub_units(node: &NormalizedNode, min_node_count: usize) -> Vec<SubUnit> {

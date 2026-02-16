@@ -710,8 +710,7 @@ fn sub_function_stats_shown() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Sub-function exact:"))
-        .stdout(predicate::str::contains("3 groups"));
+        .stdout(predicate::str::contains("Sub-function exact: 3 groups"));
 }
 
 #[test]

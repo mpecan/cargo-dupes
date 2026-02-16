@@ -742,38 +742,42 @@ pub fn normalize_signature(sig: &syn::Signature, ctx: &mut NormalizationContext)
 
 /// Collects all placeholder occurrences in depth-first order, building
 /// a mapping from (kind, old_index) → new_sequential_index.
-fn collect_placeholder_order(node: &NormalizedNode, order: &mut Vec<(PlaceholderKind, usize)>) {
+fn collect_placeholder_order(
+    node: &NormalizedNode,
+    order: &mut Vec<(PlaceholderKind, usize)>,
+    seen: &mut std::collections::HashSet<(PlaceholderKind, usize)>,
+) {
     match node {
         NormalizedNode::Placeholder(kind, idx)
         | NormalizedNode::PatPlaceholder(kind, idx)
         | NormalizedNode::TypePlaceholder(kind, idx) => {
-            if !order.contains(&(*kind, *idx)) {
+            if seen.insert((*kind, *idx)) {
                 order.push((*kind, *idx));
             }
         }
         NormalizedNode::Block(stmts) => {
             for s in stmts {
-                collect_placeholder_order(s, order);
+                collect_placeholder_order(s, order, seen);
             }
         }
         NormalizedNode::LetBinding { pattern, ty, init } => {
-            collect_placeholder_order(pattern, order);
+            collect_placeholder_order(pattern, order, seen);
             if let Some(t) = ty {
-                collect_placeholder_order(t, order);
+                collect_placeholder_order(t, order, seen);
             }
             if let Some(i) = init {
-                collect_placeholder_order(i, order);
+                collect_placeholder_order(i, order, seen);
             }
         }
         NormalizedNode::BinaryOp { left, right, .. } | NormalizedNode::Assign { left, right } => {
-            collect_placeholder_order(left, order);
-            collect_placeholder_order(right, order);
+            collect_placeholder_order(left, order, seen);
+            collect_placeholder_order(right, order, seen);
         }
-        NormalizedNode::UnaryOp { operand, .. } => collect_placeholder_order(operand, order),
+        NormalizedNode::UnaryOp { operand, .. } => collect_placeholder_order(operand, order, seen),
         NormalizedNode::Call { func, args } => {
-            collect_placeholder_order(func, order);
+            collect_placeholder_order(func, order, seen);
             for a in args {
-                collect_placeholder_order(a, order);
+                collect_placeholder_order(a, order, seen);
             }
         }
         NormalizedNode::MethodCall {
@@ -781,153 +785,153 @@ fn collect_placeholder_order(node: &NormalizedNode, order: &mut Vec<(Placeholder
             method,
             args,
         } => {
-            collect_placeholder_order(receiver, order);
-            collect_placeholder_order(method, order);
+            collect_placeholder_order(receiver, order, seen);
+            collect_placeholder_order(method, order, seen);
             for a in args {
-                collect_placeholder_order(a, order);
+                collect_placeholder_order(a, order, seen);
             }
         }
         NormalizedNode::FieldAccess { base, field } => {
-            collect_placeholder_order(base, order);
-            collect_placeholder_order(field, order);
+            collect_placeholder_order(base, order, seen);
+            collect_placeholder_order(field, order, seen);
         }
         NormalizedNode::Index { base, index } => {
-            collect_placeholder_order(base, order);
-            collect_placeholder_order(index, order);
+            collect_placeholder_order(base, order, seen);
+            collect_placeholder_order(index, order, seen);
         }
         NormalizedNode::Closure { params, body } => {
             for p in params {
-                collect_placeholder_order(p, order);
+                collect_placeholder_order(p, order, seen);
             }
-            collect_placeholder_order(body, order);
+            collect_placeholder_order(body, order, seen);
         }
         NormalizedNode::FnSignature {
             params,
             return_type,
         } => {
             for p in params {
-                collect_placeholder_order(p, order);
+                collect_placeholder_order(p, order, seen);
             }
             if let Some(r) = return_type {
-                collect_placeholder_order(r, order);
+                collect_placeholder_order(r, order, seen);
             }
         }
         NormalizedNode::Return(e) | NormalizedNode::Break(e) => {
             if let Some(e) = e {
-                collect_placeholder_order(e, order);
+                collect_placeholder_order(e, order, seen);
             }
         }
-        NormalizedNode::Reference { expr, .. } => collect_placeholder_order(expr, order),
+        NormalizedNode::Reference { expr, .. } => collect_placeholder_order(expr, order, seen),
         NormalizedNode::Tuple(elems) | NormalizedNode::Array(elems) => {
             for e in elems {
-                collect_placeholder_order(e, order);
+                collect_placeholder_order(e, order, seen);
             }
         }
         NormalizedNode::Repeat { elem, len } => {
-            collect_placeholder_order(elem, order);
-            collect_placeholder_order(len, order);
+            collect_placeholder_order(elem, order, seen);
+            collect_placeholder_order(len, order, seen);
         }
         NormalizedNode::Cast { expr, ty } => {
-            collect_placeholder_order(expr, order);
-            collect_placeholder_order(ty, order);
+            collect_placeholder_order(expr, order, seen);
+            collect_placeholder_order(ty, order, seen);
         }
         NormalizedNode::StructInit { fields, rest } => {
             for f in fields {
-                collect_placeholder_order(f, order);
+                collect_placeholder_order(f, order, seen);
             }
             if let Some(r) = rest {
-                collect_placeholder_order(r, order);
+                collect_placeholder_order(r, order, seen);
             }
         }
         NormalizedNode::Await(e)
         | NormalizedNode::Try(e)
         | NormalizedNode::Paren(e)
         | NormalizedNode::Semi(e) => {
-            collect_placeholder_order(e, order);
+            collect_placeholder_order(e, order, seen);
         }
         NormalizedNode::If {
             condition,
             then_branch,
             else_branch,
         } => {
-            collect_placeholder_order(condition, order);
-            collect_placeholder_order(then_branch, order);
+            collect_placeholder_order(condition, order, seen);
+            collect_placeholder_order(then_branch, order, seen);
             if let Some(e) = else_branch {
-                collect_placeholder_order(e, order);
+                collect_placeholder_order(e, order, seen);
             }
         }
         NormalizedNode::Match { expr, arms } => {
-            collect_placeholder_order(expr, order);
+            collect_placeholder_order(expr, order, seen);
             for arm in arms {
-                collect_placeholder_order(&arm.pattern, order);
+                collect_placeholder_order(&arm.pattern, order, seen);
                 if let Some(g) = &arm.guard {
-                    collect_placeholder_order(g, order);
+                    collect_placeholder_order(g, order, seen);
                 }
-                collect_placeholder_order(&arm.body, order);
+                collect_placeholder_order(&arm.body, order, seen);
             }
         }
-        NormalizedNode::Loop(body) => collect_placeholder_order(body, order),
+        NormalizedNode::Loop(body) => collect_placeholder_order(body, order, seen),
         NormalizedNode::While { condition, body } => {
-            collect_placeholder_order(condition, order);
-            collect_placeholder_order(body, order);
+            collect_placeholder_order(condition, order, seen);
+            collect_placeholder_order(body, order, seen);
         }
         NormalizedNode::ForLoop { pat, iter, body } => {
-            collect_placeholder_order(pat, order);
-            collect_placeholder_order(iter, order);
-            collect_placeholder_order(body, order);
+            collect_placeholder_order(pat, order, seen);
+            collect_placeholder_order(iter, order, seen);
+            collect_placeholder_order(body, order, seen);
         }
         NormalizedNode::PatTuple(elems)
         | NormalizedNode::PatStruct(elems)
         | NormalizedNode::PatOr(elems)
         | NormalizedNode::PatSlice(elems) => {
             for e in elems {
-                collect_placeholder_order(e, order);
+                collect_placeholder_order(e, order, seen);
             }
         }
-        NormalizedNode::PatLiteral(e) => collect_placeholder_order(e, order),
-        NormalizedNode::PatReference { pat, .. } => collect_placeholder_order(pat, order),
+        NormalizedNode::PatLiteral(e) => collect_placeholder_order(e, order, seen),
+        NormalizedNode::PatReference { pat, .. } => collect_placeholder_order(pat, order, seen),
         NormalizedNode::PatRange { lo, hi } => {
             if let Some(l) = lo {
-                collect_placeholder_order(l, order);
+                collect_placeholder_order(l, order, seen);
             }
             if let Some(h) = hi {
-                collect_placeholder_order(h, order);
+                collect_placeholder_order(h, order, seen);
             }
         }
         NormalizedNode::TypeReference { elem, .. } | NormalizedNode::TypeSlice(elem) => {
-            collect_placeholder_order(elem, order);
+            collect_placeholder_order(elem, order, seen);
         }
         NormalizedNode::TypeTuple(elems)
         | NormalizedNode::TypePath(elems)
         | NormalizedNode::TypeImplTrait(elems) => {
             for e in elems {
-                collect_placeholder_order(e, order);
+                collect_placeholder_order(e, order, seen);
             }
         }
         NormalizedNode::TypeArray { elem, len } => {
-            collect_placeholder_order(elem, order);
-            collect_placeholder_order(len, order);
+            collect_placeholder_order(elem, order, seen);
+            collect_placeholder_order(len, order, seen);
         }
         NormalizedNode::FieldValue { name, value } => {
-            collect_placeholder_order(name, order);
-            collect_placeholder_order(value, order);
+            collect_placeholder_order(name, order, seen);
+            collect_placeholder_order(value, order, seen);
         }
         NormalizedNode::Range { from, to } => {
             if let Some(f) = from {
-                collect_placeholder_order(f, order);
+                collect_placeholder_order(f, order, seen);
             }
             if let Some(t) = to {
-                collect_placeholder_order(t, order);
+                collect_placeholder_order(t, order, seen);
             }
         }
         NormalizedNode::Path(segments) => {
             for s in segments {
-                collect_placeholder_order(s, order);
+                collect_placeholder_order(s, order, seen);
             }
         }
         NormalizedNode::LetExpr { pat, expr } => {
-            collect_placeholder_order(pat, order);
-            collect_placeholder_order(expr, order);
+            collect_placeholder_order(pat, order, seen);
+            collect_placeholder_order(expr, order, seen);
         }
         NormalizedNode::Literal(_)
         | NormalizedNode::Continue
@@ -1155,7 +1159,8 @@ fn apply_reindex(
 /// This allows comparing sub-trees extracted from different function contexts.
 pub fn reindex_placeholders(node: &NormalizedNode) -> NormalizedNode {
     let mut order = Vec::new();
-    collect_placeholder_order(node, &mut order);
+    let mut seen = std::collections::HashSet::new();
+    collect_placeholder_order(node, &mut order, &mut seen);
 
     // Build mapping: (kind, old_index) → new sequential index per kind
     let mut counters: HashMap<PlaceholderKind, usize> = HashMap::new();
