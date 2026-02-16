@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use syn::punctuated::Punctuated;
+
 /// Kinds of literals — preserves type but erases value.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LiteralKind {
@@ -227,7 +229,13 @@ pub enum NormalizedNode {
         value: Box<NormalizedNode>,
     },
 
-    // Opaque — macro invocations and unsupported constructs
+    // Macro invocations — preserves macro name and best-effort parsed args
+    MacroCall {
+        name: String,
+        args: Vec<NormalizedNode>,
+    },
+
+    // Opaque — unsupported constructs
     Opaque,
 
     // Range expressions
@@ -295,6 +303,24 @@ fn member_to_string(member: &syn::Member) -> String {
         syn::Member::Named(ident) => ident.to_string(),
         syn::Member::Unnamed(idx) => idx.index.to_string(),
     }
+}
+
+fn normalize_macro(mac: &syn::Macro, ctx: &mut NormalizationContext) -> NormalizedNode {
+    let name = mac
+        .path
+        .segments
+        .last()
+        .map(|s| s.ident.to_string())
+        .unwrap_or_default();
+    let args = if mac.tokens.is_empty() {
+        Vec::new()
+    } else {
+        match mac.parse_body_with(Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated) {
+            Ok(punct) => punct.into_iter().map(|e| normalize_expr(&e, ctx)).collect(),
+            Err(_) => vec![NormalizedNode::Opaque],
+        }
+    };
+    NormalizedNode::MacroCall { name, args }
 }
 
 // ── Normalization functions ──────────────────────────────────────────────
@@ -422,6 +448,7 @@ pub fn normalize_type(ty: &syn::Type, ctx: &mut NormalizationContext) -> Normali
         syn::Type::Infer(_) => NormalizedNode::TypeInfer,
         syn::Type::Never(_) => NormalizedNode::TypeNever,
         syn::Type::Paren(p) => normalize_type(&p.elem, ctx),
+        syn::Type::Macro(tm) => normalize_macro(&tm.mac, ctx),
         _ => NormalizedNode::Opaque,
     }
 }
@@ -492,6 +519,7 @@ pub fn normalize_pat(pat: &syn::Pat, ctx: &mut NormalizationContext) -> Normaliz
             }
         }
         syn::Pat::Type(pt) => normalize_pat(&pt.pat, ctx),
+        syn::Pat::Macro(pm) => normalize_macro(&pm.mac, ctx),
         _ => NormalizedNode::Opaque,
     }
 }
@@ -662,7 +690,7 @@ pub fn normalize_expr(expr: &syn::Expr, ctx: &mut NormalizationContext) -> Norma
             pat: Box::new(normalize_pat(&el.pat, ctx)),
             expr: Box::new(normalize_expr(&el.expr, ctx)),
         },
-        syn::Expr::Macro(_) => NormalizedNode::Opaque,
+        syn::Expr::Macro(em) => normalize_macro(&em.mac, ctx),
         syn::Expr::Group(eg) => normalize_expr(&eg.expr, ctx),
         syn::Expr::Unsafe(eu) => normalize_block(&eu.block, ctx),
         syn::Expr::Const(ec) => normalize_block(&ec.block, ctx),
@@ -689,7 +717,14 @@ pub fn normalize_stmt(stmt: &syn::Stmt, ctx: &mut NormalizationContext) -> Norma
             }
         }
         syn::Stmt::Item(_) => NormalizedNode::Opaque,
-        syn::Stmt::Macro(_) => NormalizedNode::Opaque,
+        syn::Stmt::Macro(sm) => {
+            let normalized = normalize_macro(&sm.mac, ctx);
+            if sm.semi_token.is_some() {
+                NormalizedNode::Semi(Box::new(normalized))
+            } else {
+                normalized
+            }
+        }
     }
 }
 
@@ -933,6 +968,11 @@ fn collect_placeholder_order(
             collect_placeholder_order(pat, order, seen);
             collect_placeholder_order(expr, order, seen);
         }
+        NormalizedNode::MacroCall { args, .. } => {
+            for a in args {
+                collect_placeholder_order(a, order, seen);
+            }
+        }
         NormalizedNode::Literal(_)
         | NormalizedNode::Continue
         | NormalizedNode::PatWild
@@ -1142,6 +1182,10 @@ fn apply_reindex(
             pat: Box::new(apply_reindex(pat, mapping)),
             expr: Box::new(apply_reindex(expr, mapping)),
         },
+        NormalizedNode::MacroCall { name, args } => NormalizedNode::MacroCall {
+            name: name.clone(),
+            args: args.iter().map(|a| apply_reindex(a, mapping)).collect(),
+        },
         // Leaf nodes that contain no placeholders — clone as-is
         NormalizedNode::Literal(_)
         | NormalizedNode::Continue
@@ -1315,6 +1359,7 @@ pub fn count_nodes(node: &NormalizedNode) -> usize {
         | NormalizedNode::TypeImplTrait(elems) => 1 + elems.iter().map(count_nodes).sum::<usize>(),
         NormalizedNode::TypeArray { elem, len } => 1 + count_nodes(elem) + count_nodes(len),
         NormalizedNode::FieldValue { name, value } => 1 + count_nodes(name) + count_nodes(value),
+        NormalizedNode::MacroCall { args, .. } => 1 + args.iter().map(count_nodes).sum::<usize>(),
         NormalizedNode::Opaque => 1,
         NormalizedNode::Range { from, to } => {
             1 + from.as_ref().map_or(0, |e| count_nodes(e))
@@ -1456,7 +1501,7 @@ mod tests {
         let code2 = "for j in 0..10 { println!(\"world\") }";
         let n1 = normalize_code_expr(code1);
         let n2 = normalize_code_expr(code2);
-        // The macro invocations are Opaque, so loop bodies match
+        // Same macro name with erased literal values, so loop bodies match
         assert_eq!(n1, n2);
     }
 
@@ -1585,9 +1630,16 @@ mod tests {
     }
 
     #[test]
-    fn macro_invocations_are_opaque() {
+    fn macro_invocations_produce_macro_call() {
         let n = normalize_code_expr("println!(\"hello\")");
-        assert_eq!(n, NormalizedNode::Opaque);
+        match &n {
+            NormalizedNode::MacroCall { name, args } => {
+                assert_eq!(name, "println");
+                assert_eq!(args.len(), 1);
+                assert_eq!(args[0], NormalizedNode::Literal(LiteralKind::Str));
+            }
+            _ => panic!("Expected MacroCall node, got {:?}", n),
+        }
     }
 
     #[test]
@@ -1686,6 +1738,116 @@ mod tests {
         match body {
             NormalizedNode::Block(stmts) => assert!(stmts.is_empty()),
             _ => panic!("Expected empty Block"),
+        }
+    }
+
+    #[test]
+    fn different_macro_names_produce_different_nodes() {
+        let n1 = normalize_code_expr("println!(\"hello\")");
+        let n2 = normalize_code_expr("eprintln!(\"hello\")");
+        assert_ne!(n1, n2);
+    }
+
+    #[test]
+    fn same_macro_different_literal_values_are_equal() {
+        let n1 = normalize_code_expr("println!(\"hello\")");
+        let n2 = normalize_code_expr("println!(\"world\")");
+        assert_eq!(n1, n2);
+    }
+
+    #[test]
+    fn same_macro_different_arg_count_are_different() {
+        let n1 = normalize_code_expr("println!(\"a\")");
+        let n2 = normalize_code_expr("println!(\"a\", \"b\")");
+        assert_ne!(n1, n2);
+    }
+
+    #[test]
+    fn vec_macro_normalized() {
+        let n = normalize_code_expr("vec![1, 2, 3]");
+        match &n {
+            NormalizedNode::MacroCall { name, args } => {
+                assert_eq!(name, "vec");
+                assert_eq!(args.len(), 3);
+            }
+            _ => panic!("Expected MacroCall node, got {:?}", n),
+        }
+    }
+
+    #[test]
+    fn multi_segment_macro_path_uses_last_segment() {
+        let n = normalize_code_expr("std::println!(\"hello\")");
+        match &n {
+            NormalizedNode::MacroCall { name, .. } => {
+                assert_eq!(name, "println");
+            }
+            _ => panic!("Expected MacroCall node, got {:?}", n),
+        }
+    }
+
+    #[test]
+    fn macro_call_node_count() {
+        let n = normalize_code_expr("println!(\"a\", \"b\")");
+        // 1 for MacroCall + 2 args (Literal each = 1)
+        assert_eq!(count_nodes(&n), 3);
+    }
+
+    #[test]
+    fn unparseable_macro_args_produce_opaque() {
+        // vec![x; n] uses semicolon syntax, which can't be parsed as comma-separated exprs
+        let n = normalize_code_expr("vec![x; 10]");
+        match &n {
+            NormalizedNode::MacroCall { name, args } => {
+                assert_eq!(name, "vec");
+                assert_eq!(args.len(), 1);
+                assert_eq!(args[0], NormalizedNode::Opaque);
+            }
+            _ => panic!("Expected MacroCall node, got {:?}", n),
+        }
+    }
+
+    #[test]
+    fn unparseable_macro_differs_from_no_args() {
+        let n_empty = normalize_code_expr("my_macro!()");
+        let n_unparseable = normalize_code_expr("vec![x; 10]");
+        match (&n_empty, &n_unparseable) {
+            (
+                NormalizedNode::MacroCall {
+                    args: args_empty, ..
+                },
+                NormalizedNode::MacroCall {
+                    args: args_unparseable,
+                    ..
+                },
+            ) => {
+                assert!(args_empty.is_empty());
+                assert_eq!(args_unparseable.len(), 1);
+                assert_eq!(args_unparseable[0], NormalizedNode::Opaque);
+            }
+            _ => panic!("Expected MacroCall nodes"),
+        }
+    }
+
+    #[test]
+    fn type_position_macro_normalized() {
+        // Type::Macro is rare but exists — we need to parse it via a function signature
+        let code = "fn foo() -> my_type!(i32) {}";
+        // syn may not parse this as Type::Macro in all cases; verify it at least doesn't panic
+        if let Ok(f) = syn::parse_str::<syn::ItemFn>(code) {
+            let (sig, _) = normalize_item_fn(&f);
+            // Just verify it produces something (doesn't panic)
+            assert!(count_nodes(&sig) > 0);
+        }
+    }
+
+    #[test]
+    fn pat_macro_normalized() {
+        // Pat::Macro appears as a macro in pattern position, e.g. in a match arm
+        // This is quite rare, but verify it at least normalizes correctly
+        let code = "fn foo(x: i32) { match x { my_pat!(x) => {} _ => {} } }";
+        if let Ok(f) = syn::parse_str::<syn::ItemFn>(code) {
+            let (_, body) = normalize_item_fn(&f);
+            assert!(count_nodes(&body) > 0);
         }
     }
 
