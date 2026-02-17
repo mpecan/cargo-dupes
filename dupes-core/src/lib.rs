@@ -1,17 +1,18 @@
+pub mod code_unit;
 pub mod config;
 pub mod error;
 pub mod extractor;
 pub mod fingerprint;
 pub mod grouper;
 pub mod ignore;
-pub mod normalizer;
+pub mod node;
 pub mod output;
-pub mod parser;
 pub mod scanner;
 pub mod similarity;
 
 use std::collections::HashSet;
 
+use code_unit::CodeUnit;
 use config::Config;
 use fingerprint::Fingerprint;
 use grouper::{DuplicateGroup, DuplicationStats};
@@ -29,47 +30,37 @@ pub struct AnalysisResult {
     pub all_fingerprints: HashSet<Fingerprint>,
 }
 
-/// Run the full analysis pipeline.
-pub fn analyze(config: &Config) -> error::Result<AnalysisResult> {
-    // 1. Scan for files
-    let scan_config =
-        scanner::ScanConfig::new(config.root.clone()).with_excludes(config.exclude.clone());
-    let files = scanner::scan_files(&scan_config);
-
-    if files.is_empty() {
-        return Err(error::Error::NoSourceFiles(config.root.clone()));
-    }
-
-    // 2. Parse all files
-    let (units, warnings) = parser::parse_files(
-        &files,
-        config.min_nodes,
-        config.min_lines,
-        config.exclude_tests,
-    );
-
-    // 3. Group exact duplicates
+/// Run the analysis pipeline on pre-parsed code units.
+///
+/// The caller is responsible for scanning files and parsing them into `CodeUnit`s.
+/// This function handles grouping, similarity detection, ignore filtering, and stats.
+pub fn analyze(
+    units: Vec<CodeUnit>,
+    warnings: Vec<String>,
+    config: &Config,
+) -> error::Result<AnalysisResult> {
+    // 1. Group exact duplicates
     let exact_groups = grouper::group_exact_duplicates(&units);
 
-    // 4. Find near-duplicates
-    let exact_fps: Vec<_> = exact_groups.iter().filter_map(|g| g.fingerprint).collect();
+    // 2. Find near-duplicates
+    let exact_fps: Vec<_> = exact_groups.iter().map(|g| g.fingerprint).collect();
     let near_groups =
         grouper::find_near_duplicates(&units, config.similarity_threshold, &exact_fps);
 
-    // 5. Sub-function duplicate detection (opt-in)
+    // 3. Sub-function duplicate detection (opt-in)
     let (sub_exact_groups, sub_near_groups) = if config.sub_function {
         // Extract sub-units from each code unit
-        let sub_units: Vec<parser::CodeUnit> = units
+        let sub_units: Vec<CodeUnit> = units
             .iter()
             .flat_map(|unit| {
                 let sub_units = extractor::extract_sub_units(&unit.body, config.min_sub_nodes);
-                sub_units.into_iter().map(|su| parser::CodeUnit {
+                sub_units.into_iter().map(|su| CodeUnit {
                     kind: su.kind,
                     name: su.description,
                     file: unit.file.clone(),
                     line_start: unit.line_start,
                     line_end: unit.line_end,
-                    signature: normalizer::NormalizedNode::Opaque,
+                    signature: node::NormalizedNode::Opaque,
                     body: su.node.clone(),
                     fingerprint: fingerprint::Fingerprint::from_node(&su.node),
                     node_count: su.node_count,
@@ -79,7 +70,7 @@ pub fn analyze(config: &Config) -> error::Result<AnalysisResult> {
             .collect();
 
         let sub_exact = grouper::group_exact_duplicates(&sub_units);
-        let sub_exact_fps: Vec<_> = sub_exact.iter().filter_map(|g| g.fingerprint).collect();
+        let sub_exact_fps: Vec<_> = sub_exact.iter().map(|g| g.fingerprint).collect();
         let sub_near =
             grouper::find_near_duplicates(&sub_units, config.similarity_threshold, &sub_exact_fps);
         (sub_exact, sub_near)
@@ -87,23 +78,23 @@ pub fn analyze(config: &Config) -> error::Result<AnalysisResult> {
         (Vec::new(), Vec::new())
     };
 
-    // 6. Collect all fingerprints before filtering (for cleanup staleness check)
+    // 4. Collect all fingerprints before filtering (for cleanup staleness check)
     let all_fingerprints: HashSet<Fingerprint> = exact_groups
         .iter()
         .chain(near_groups.iter())
         .chain(sub_exact_groups.iter())
         .chain(sub_near_groups.iter())
-        .filter_map(|g| g.fingerprint)
+        .map(|g| g.fingerprint)
         .collect();
 
-    // 7. Apply ignore filtering
+    // 5. Apply ignore filtering
     let ignore_file = ignore::load_ignore_file(&config.root);
     let exact_groups = ignore::filter_ignored(exact_groups, &ignore_file);
     let near_groups = ignore::filter_ignored(near_groups, &ignore_file);
     let sub_exact_groups = ignore::filter_ignored(sub_exact_groups, &ignore_file);
     let sub_near_groups = ignore::filter_ignored(sub_near_groups, &ignore_file);
 
-    // 8. Compute stats
+    // 6. Compute stats
     let stats = grouper::compute_stats_with_sub(
         &units,
         &exact_groups,

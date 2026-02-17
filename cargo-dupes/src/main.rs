@@ -4,12 +4,12 @@ use std::process;
 
 use clap::{Parser, Subcommand};
 
-use cargo_dupes::config::Config;
-use cargo_dupes::fingerprint::Fingerprint;
-use cargo_dupes::ignore;
-use cargo_dupes::output::Reporter;
-use cargo_dupes::output::json::JsonReporter;
-use cargo_dupes::output::text::TextReporter;
+use dupes_core::config::Config;
+use dupes_core::fingerprint::Fingerprint;
+use dupes_core::ignore;
+use dupes_core::output::Reporter;
+use dupes_core::output::json::JsonReporter;
+use dupes_core::output::text::TextReporter;
 
 #[derive(Parser)]
 #[command(
@@ -182,7 +182,29 @@ fn main() {
         config.min_sub_nodes = min_sub_nodes;
     }
 
-    let result = match cargo_dupes::analyze(&config) {
+    // 1. Scan for files
+    let scan_config = dupes_core::scanner::ScanConfig::new(config.root.clone())
+        .with_excludes(config.exclude.clone());
+    let files = dupes_core::scanner::scan_files(&scan_config);
+
+    if files.is_empty() {
+        eprintln!(
+            "Error: {}",
+            dupes_core::error::Error::NoSourceFiles(config.root.clone())
+        );
+        process::exit(2);
+    }
+
+    // 2. Parse all files (syn-specific)
+    let (units, warnings) = cargo_dupes::parser::parse_files(
+        &files,
+        config.min_nodes,
+        config.min_lines,
+        config.exclude_tests,
+    );
+
+    // 3. Run the analysis pipeline
+    let result = match dupes_core::analyze(units, warnings, &config) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("Error: {e}");
