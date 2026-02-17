@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use syn::spanned::Spanned;
 use syn::visit::Visit;
 
 use dupes_core::fingerprint::Fingerprint;
@@ -29,32 +30,29 @@ struct CodeUnitExtractor {
     file: PathBuf,
     min_node_count: usize,
     min_line_count: usize,
-    exclude_tests: bool,
     units: Vec<CodeUnit>,
     /// Track current impl block context for method naming.
     current_impl: Option<String>,
     /// Track if we're in a trait impl
     in_trait_impl: bool,
+    /// Track if we're inside test code (`#[cfg(test)]` module/impl).
+    in_test_context: bool,
 }
 
 impl CodeUnitExtractor {
-    fn new(
-        file: PathBuf,
-        min_node_count: usize,
-        min_line_count: usize,
-        exclude_tests: bool,
-    ) -> Self {
+    fn new(file: PathBuf, min_node_count: usize, min_line_count: usize) -> Self {
         Self {
             file,
             min_node_count,
             min_line_count,
-            exclude_tests,
             units: Vec::new(),
             current_impl: None,
             in_trait_impl: false,
+            in_test_context: false,
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn add_unit(
         &mut self,
         kind: CodeUnitKind,
@@ -63,6 +61,7 @@ impl CodeUnitExtractor {
         line_end: usize,
         sig: NormalizedNode,
         body: NormalizedNode,
+        is_test: bool,
     ) {
         let node_count = normalizer::count_nodes(&sig) + normalizer::count_nodes(&body);
         if node_count < self.min_node_count {
@@ -84,15 +83,15 @@ impl CodeUnitExtractor {
             fingerprint,
             node_count,
             parent_name: None,
+            is_test,
         });
     }
 }
 
 impl<'ast> Visit<'ast> for CodeUnitExtractor {
     fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
-        if self.exclude_tests && (has_test_attr(&node.attrs) || has_cfg_test_attr(&node.attrs)) {
-            return;
-        }
+        let is_test =
+            self.in_test_context || has_test_attr(&node.attrs) || has_cfg_test_attr(&node.attrs);
 
         let name = node.sig.ident.to_string();
         let line_start = node.sig.ident.span().start().line;
@@ -105,22 +104,29 @@ impl<'ast> Visit<'ast> for CodeUnitExtractor {
             line_end,
             sig,
             body,
+            is_test,
         );
 
-        // Continue visiting nested items
+        // Continue visiting nested items (propagate test context)
+        let prev = self.in_test_context;
+        self.in_test_context = is_test;
         syn::visit::visit_item_fn(self, node);
+        self.in_test_context = prev;
     }
 
     fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
-        if self.exclude_tests && has_cfg_test_attr(&node.attrs) {
-            return;
+        let prev = self.in_test_context;
+        if has_cfg_test_attr(&node.attrs) {
+            self.in_test_context = true;
         }
         syn::visit::visit_item_mod(self, node);
+        self.in_test_context = prev;
     }
 
     fn visit_item_impl(&mut self, node: &'ast syn::ItemImpl) {
-        if self.exclude_tests && has_cfg_test_attr(&node.attrs) {
-            return;
+        let prev_test = self.in_test_context;
+        if has_cfg_test_attr(&node.attrs) {
+            self.in_test_context = true;
         }
 
         let type_name = quote_type(&node.self_ty);
@@ -163,17 +169,32 @@ impl<'ast> Visit<'ast> for CodeUnitExtractor {
                     CodeUnitKind::Method
                 };
 
-                self.add_unit(kind, full_name, line_start, line_end, sig, body);
+                self.add_unit(
+                    kind,
+                    full_name,
+                    line_start,
+                    line_end,
+                    sig,
+                    body,
+                    self.in_test_context,
+                );
             }
         }
 
         self.current_impl = prev_impl;
         self.in_trait_impl = prev_trait;
+        self.in_test_context = prev_test;
     }
 
     fn visit_expr_closure(&mut self, node: &'ast syn::ExprClosure) {
         let line_start = node.or1_token.span.start().line;
-        let line_end = line_start; // closures often span one expression
+        let line_end = match &*node.body {
+            syn::Expr::Block(eb) => eb.block.brace_token.span.close().end().line,
+            other => {
+                let end = other.span().end().line;
+                if end > 0 { end } else { line_start }
+            }
+        };
 
         let normalized = normalizer::normalize_closure_expr(node);
         let node_count = normalizer::count_nodes(&normalized);
@@ -194,6 +215,7 @@ impl<'ast> Visit<'ast> for CodeUnitExtractor {
                 fingerprint,
                 node_count,
                 parent_name: None,
+                is_test: self.in_test_context,
             });
         }
 
@@ -216,42 +238,56 @@ fn quote_type(ty: &syn::Type) -> String {
     }
 }
 
-/// Parse a single Rust file and extract code units.
-pub fn parse_file(
+/// Parse Rust source code and extract code units.
+///
+/// This is the core parsing entry point used by `RustAnalyzer`.
+/// `path` is used for diagnostics and naming only.
+/// Test code is always included but tagged with `is_test: true`;
+/// filtering is handled by the caller.
+pub fn parse_source(
     path: &Path,
+    source: &str,
     min_node_count: usize,
     min_line_count: usize,
-    exclude_tests: bool,
 ) -> Result<Vec<CodeUnit>, String> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-
-    let file = syn::parse_file(&content)
+    let file = syn::parse_file(source)
         .map_err(|e| format!("Failed to parse {}: {}", path.display(), e))?;
 
-    let mut extractor = CodeUnitExtractor::new(
-        path.to_path_buf(),
-        min_node_count,
-        min_line_count,
-        exclude_tests,
-    );
+    let mut extractor = CodeUnitExtractor::new(path.to_path_buf(), min_node_count, min_line_count);
     extractor.visit_file(&file);
 
     Ok(extractor.units)
 }
 
+/// Parse a single Rust file and extract code units.
+///
+/// This is a lower-level convenience function. Prefer using [`crate::RustAnalyzer`]
+/// with [`dupes_core::analyze`] for the full pipeline.
+pub fn parse_file(
+    path: &Path,
+    min_node_count: usize,
+    min_line_count: usize,
+) -> Result<Vec<CodeUnit>, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+
+    parse_source(path, &content, min_node_count, min_line_count)
+}
+
 /// Parse multiple files and collect all code units, skipping files that fail to parse.
+///
+/// This is a lower-level convenience function. Prefer using [`crate::RustAnalyzer`]
+/// with [`dupes_core::analyze`] for the full pipeline.
 pub fn parse_files(
     paths: &[PathBuf],
     min_node_count: usize,
     min_line_count: usize,
-    exclude_tests: bool,
 ) -> (Vec<CodeUnit>, Vec<String>) {
     let mut units = Vec::new();
     let mut warnings = Vec::new();
 
     for path in paths {
-        match parse_file(path, min_node_count, min_line_count, exclude_tests) {
+        match parse_file(path, min_node_count, min_line_count) {
             Ok(file_units) => units.extend(file_units),
             Err(warning) => warnings.push(warning),
         }
@@ -270,7 +306,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("test.rs");
         fs::write(&file, code).unwrap();
-        parse_file(&file, min_nodes, 0, false).unwrap()
+        parse_file(&file, min_nodes, 0).unwrap()
     }
 
     #[test]
@@ -424,7 +460,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("broken.rs");
         fs::write(&file, "fn broken( { }").unwrap();
-        let result = parse_file(&file, 1, 0, false);
+        let result = parse_file(&file, 1, 0);
         assert!(result.is_err());
     }
 
@@ -435,7 +471,7 @@ mod tests {
         let bad = tmp.path().join("bad.rs");
         fs::write(&good, "fn good() { let x = 1; }").unwrap();
         fs::write(&bad, "fn bad( {").unwrap();
-        let (units, warnings) = parse_files(&[good, bad], 1, 0, false);
+        let (units, warnings) = parse_files(&[good, bad], 1, 0);
         assert!(!units.is_empty());
         assert_eq!(warnings.len(), 1);
     }
@@ -508,23 +544,16 @@ fn longer(x: i32) -> i32 {
         fs::write(&file, code).unwrap();
 
         // With min_line_count=0, both functions should appear
-        let units_all = parse_file(&file, 1, 0, false).unwrap();
+        let units_all = parse_file(&file, 1, 0).unwrap();
         assert!(units_all.len() >= 2);
 
         // With min_line_count=5, only the longer function should pass
-        let units_filtered = parse_file(&file, 1, 5, false).unwrap();
+        let units_filtered = parse_file(&file, 1, 5).unwrap();
         assert!(units_filtered.len() < units_all.len());
         for unit in &units_filtered {
             let lines = unit.line_end.saturating_sub(unit.line_start) + 1;
             assert!(lines >= 5, "unit {} has only {lines} lines", unit.name);
         }
-    }
-
-    fn write_and_parse_exclude(code: &str, min_nodes: usize, exclude_tests: bool) -> Vec<CodeUnit> {
-        let tmp = TempDir::new().unwrap();
-        let file = tmp.path().join("test.rs");
-        fs::write(&file, code).unwrap();
-        parse_file(&file, min_nodes, 0, exclude_tests).unwrap()
     }
 
     #[test]
@@ -576,7 +605,7 @@ fn longer(x: i32) -> i32 {
     }
 
     #[test]
-    fn exclude_tests_skips_test_functions() {
+    fn test_functions_tagged_as_test() {
         let code = r#"
             fn production(x: i32) -> i32 {
                 let y = x + 1;
@@ -590,15 +619,18 @@ fn longer(x: i32) -> i32 {
             }
         "#;
 
-        let with_tests = write_and_parse_exclude(code, 1, false);
-        let without_tests = write_and_parse_exclude(code, 1, true);
+        let units = write_and_parse(code, 1);
+        let prod: Vec<_> = units.iter().filter(|u| u.name == "production").collect();
+        let test: Vec<_> = units.iter().filter(|u| u.name == "my_test").collect();
 
-        assert!(with_tests.len() > without_tests.len());
-        assert!(without_tests.iter().all(|u| u.name != "my_test"));
+        assert_eq!(prod.len(), 1);
+        assert!(!prod[0].is_test);
+        assert_eq!(test.len(), 1);
+        assert!(test[0].is_test);
     }
 
     #[test]
-    fn exclude_tests_skips_cfg_test_modules() {
+    fn cfg_test_module_functions_tagged_as_test() {
         let code = r#"
             fn production(x: i32) -> i32 {
                 let y = x + 1;
@@ -614,15 +646,18 @@ fn longer(x: i32) -> i32 {
             }
         "#;
 
-        let with_tests = write_and_parse_exclude(code, 1, false);
-        let without_tests = write_and_parse_exclude(code, 1, true);
+        let units = write_and_parse(code, 1);
+        let prod: Vec<_> = units.iter().filter(|u| u.name == "production").collect();
+        let helper: Vec<_> = units.iter().filter(|u| u.name == "helper").collect();
 
-        assert!(with_tests.len() > without_tests.len());
-        assert!(without_tests.iter().all(|u| u.name != "helper"));
+        assert_eq!(prod.len(), 1);
+        assert!(!prod[0].is_test);
+        assert_eq!(helper.len(), 1);
+        assert!(helper[0].is_test);
     }
 
     #[test]
-    fn exclude_tests_false_keeps_all() {
+    fn non_test_code_not_tagged() {
         let code = r#"
             fn production(x: i32) -> i32 {
                 let y = x + 1;
@@ -636,12 +671,14 @@ fn longer(x: i32) -> i32 {
             }
         "#;
 
-        let all_units = write_and_parse_exclude(code, 1, false);
-        assert!(all_units.iter().any(|u| u.name == "my_test"));
+        let units = write_and_parse(code, 1);
+        let non_test: Vec<_> = units.iter().filter(|u| !u.is_test).collect();
+        assert!(!non_test.is_empty());
+        assert!(non_test.iter().all(|u| u.name != "my_test"));
     }
 
     #[test]
-    fn exclude_tests_skips_cfg_test_impl_blocks() {
+    fn cfg_test_impl_blocks_tagged_as_test() {
         let code = r#"
             struct Foo;
 
@@ -661,14 +698,28 @@ fn longer(x: i32) -> i32 {
             }
         "#;
 
-        let with_tests = write_and_parse_exclude(code, 1, false);
-        let without_tests = write_and_parse_exclude(code, 1, true);
+        let units = write_and_parse(code, 1);
+        let prod: Vec<_> = units
+            .iter()
+            .filter(|u| u.name.contains("production"))
+            .collect();
+        let helper: Vec<_> = units
+            .iter()
+            .filter(|u| u.name.contains("test_helper"))
+            .collect();
 
-        assert!(with_tests.len() > without_tests.len());
-        assert!(
-            without_tests
-                .iter()
-                .all(|u| !u.name.contains("test_helper"))
-        );
+        assert_eq!(prod.len(), 1);
+        assert!(!prod[0].is_test);
+        assert_eq!(helper.len(), 1);
+        assert!(helper[0].is_test);
+    }
+
+    #[test]
+    fn parse_source_works() {
+        let path = Path::new("test.rs");
+        let source = "fn foo(x: i32) -> i32 { x + 1 }";
+        let units = parse_source(path, source, 1, 0).unwrap();
+        assert_eq!(units.len(), 1);
+        assert_eq!(units[0].name, "foo");
     }
 }

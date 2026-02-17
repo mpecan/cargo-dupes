@@ -5,7 +5,7 @@ pub enum Error {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("No Rust source files found in {0}")]
+    #[error("No source files found in {0}")]
     NoSourceFiles(PathBuf),
 
     #[error("{0}")]

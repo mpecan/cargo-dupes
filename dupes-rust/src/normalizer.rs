@@ -1,5 +1,8 @@
-// Re-export all core types so `use crate::normalizer::*` still works
-pub use dupes_core::node::*;
+// Re-export core node types used by the normalizer's public API and tests.
+pub use dupes_core::node::{
+    BinOpKind, LiteralKind, NodeKind, NormalizationContext, NormalizedNode, PlaceholderKind,
+    UnOpKind, count_nodes, reindex_placeholders,
+};
 
 use syn::punctuated::Punctuated;
 
@@ -611,7 +614,9 @@ pub fn normalize_impl_item_fn(method: &syn::ImplItemFn) -> (NormalizedNode, Norm
 /// Normalize a closure expression.
 pub fn normalize_closure_expr(closure: &syn::ExprClosure) -> NormalizedNode {
     let mut ctx = NormalizationContext::new();
-    normalize_expr(&syn::Expr::Closure(closure.clone()), &mut ctx)
+    let mut children = vec![normalize_expr(&closure.body, &mut ctx)];
+    children.extend(closure.inputs.iter().map(|p| normalize_pat(p, &mut ctx)));
+    NormalizedNode::with_children(NodeKind::Closure, children)
 }
 
 /// Normalize an impl block -- normalizes each method body.

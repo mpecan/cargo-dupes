@@ -1,0 +1,21 @@
+[package]
+name = "dupes-rust"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Rust language analyzer for dupes-core duplicate detection"
+readme = "../README.md"
+keywords = ["duplicates", "code-quality", "lint", "ast", "rust"]
+categories = ["development-tools"]
+
+[dependencies]
+dupes-core = { path = "../dupes-core", version = "0.1.5" }
+syn = { version = "2", features = ["full", "visit", "extra-traits"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+serde_json = { workspace = true }

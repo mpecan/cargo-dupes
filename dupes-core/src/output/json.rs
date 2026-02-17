@@ -163,6 +163,7 @@ mod tests {
             fingerprint: Fingerprint::from_node(&NormalizedNode::leaf(NodeKind::Opaque)),
             node_count: 10,
             parent_name: None,
+            is_test: false,
         }
     }
 

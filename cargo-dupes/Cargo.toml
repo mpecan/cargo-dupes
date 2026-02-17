@@ -14,8 +14,7 @@ categories = ["development-tools::cargo-plugins", "development-tools"]
 
 [dependencies]
 dupes-core = { path = "../dupes-core", version = "0.1.5" }
-syn = { version = "2", features = ["full", "visit", "extra-traits"] }
-proc-macro2 = { version = "1", features = ["span-locations"] }
+dupes-rust = { path = "../dupes-rust", version = "0.1.5" }
 clap = { version = "4", features = ["derive"] }
 
 [dev-dependencies]

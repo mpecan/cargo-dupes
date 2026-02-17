@@ -48,4 +48,6 @@ pub struct CodeUnit {
     pub node_count: usize,
     /// For sub-function units, the name of the parent function.
     pub parent_name: Option<String>,
+    /// Whether this code unit was identified as test code by the language analyzer.
+    pub is_test: bool,
 }
