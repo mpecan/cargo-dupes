@@ -13,6 +13,8 @@ env:
 jobs:
   publish:
     name: Publish to crates.io
+    # Only run once per release cycle — trigger on dupes-core tag only.
+    if: startsWith(github.event.release.tag_name, 'dupes-core-')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +35,7 @@ jobs:
           VERSION="$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "dupes-core") | .version')"
           echo "Waiting for dupes-core ${VERSION}..."
           for attempt in $(seq 1 10); do
-            if curl -fsS "https://crates.io/api/v1/crates/dupes-core/${VERSION}" > /dev/null; then
+            if curl -fsS -H "User-Agent: cargo-dupes-ci" "https://crates.io/api/v1/crates/dupes-core/${VERSION}" > /dev/null; then
               echo "dupes-core ${VERSION} is available."
               exit 0
             fi
@@ -55,7 +57,7 @@ jobs:
           VERSION="$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "dupes-rust") | .version')"
           echo "Waiting for dupes-rust ${VERSION}..."
           for attempt in $(seq 1 10); do
-            if curl -fsS "https://crates.io/api/v1/crates/dupes-rust/${VERSION}" > /dev/null; then
+            if curl -fsS -H "User-Agent: cargo-dupes-ci" "https://crates.io/api/v1/crates/dupes-rust/${VERSION}" > /dev/null; then
               echo "dupes-rust ${VERSION} is available."
               exit 0
             fi
