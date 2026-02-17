@@ -12,6 +12,9 @@ readme = "../README.md"
 keywords = ["cargo", "duplicates", "code-quality", "lint", "ast"]
 categories = ["development-tools::cargo-plugins", "development-tools"]
 
+[lints]
+workspace = true
+
 [dependencies]
 dupes-core = { path = "../dupes-core", version = "0.1.5" }
 dupes-rust = { path = "../dupes-rust", version = "0.1.5" }

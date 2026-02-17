@@ -1,0 +1,199 @@
+[[ignore]]
+fingerprint = "9d043e01e8ef1d6a"
+reason = "test fixture: exact_dupes/near_dupes/mixed"
+
+[[ignore]]
+fingerprint = "3241d116a0363e38"
+reason = "test fixture: test_code"
+
+[[ignore]]
+fingerprint = "35d7bbf875d69b65"
+reason = "test fixture: near_dupes/mixed"
+
+[[ignore]]
+fingerprint = "ea5a385f020ab6cc"
+reason = "test fixture: sub_function_dupes"
+
+[[ignore]]
+fingerprint = "2f17a55c8404d2d1"
+reason = "trait impl: JsonReporter report methods delegate to write_groups"
+
+[[ignore]]
+fingerprint = "950599759e10fecc"
+reason = "normalizer: path segment map closures with different PlaceholderKind"
+
+[[ignore]]
+fingerprint = "03f8a91b6e33b28f"
+reason = "trivial: one-line closures in grouper"
+
+[[ignore]]
+fingerprint = "46619205d3947fbe"
+reason = "trait impl: TextReporter report_exact/report_near"
+
+[[ignore]]
+fingerprint = "5f0f36bdba897816"
+reason = "trivial: Reporter::new constructors"
+
+[[ignore]]
+fingerprint = "6283b4c6363ef530"
+reason = "trivial: one-line closures in grouper"
+
+[[ignore]]
+fingerprint = "b039d7c0273a4a59"
+reason = "test helper: make_unit duplicated in json/text test modules"
+
+[[ignore]]
+fingerprint = "d5fd03705d63f6dc"
+reason = "API wrappers: normalize_item_fn/normalize_impl_item_fn for different syn types"
+
+[[ignore]]
+fingerprint = "d9f4c17f4a8c99a2"
+reason = "trait impl: TextReporter report_sub_exact/report_sub_near"
+
+[[ignore]]
+fingerprint = "dc7844f7ba7fe3be"
+reason = "API methods: exact_duplicate_percent/near_duplicate_percent on different fields"
+
+[[ignore]]
+fingerprint = "1211ef2e82ce5671"
+reason = "test pattern: similarity score tests in core_with_syn"
+
+[[ignore]]
+fingerprint = "117b75316a5f7731"
+reason = "test pattern: normalizer parse-assert tests"
+
+[[ignore]]
+fingerprint = "9b92128d1de77deb"
+reason = "test pattern: CLI integration cargo_bin-assert tests"
+
+[[ignore]]
+fingerprint = "4eb9cda3cd6f18e5"
+reason = "test pattern: normalizer parse-assert tests"
+
+[[ignore]]
+fingerprint = "a890177f43e81dba"
+reason = "test pattern: normalizer parse-assert tests"
+
+[[ignore]]
+fingerprint = "3d3201c5f14ab762"
+reason = "test pattern: CLI integration cargo_bin-assert tests"
+
+[[ignore]]
+fingerprint = "7007bf339218876b"
+reason = "test helper: parse_fn/parse_expr duplicated across test modules"
+
+[[ignore]]
+fingerprint = "9f35b03e35951497"
+reason = "test pattern: normalizer parse-assert tests"
+
+[[ignore]]
+fingerprint = "05c712ce300ca381"
+reason = "test pattern: similarity score assertion tests"
+
+[[ignore]]
+fingerprint = "4a057dfc7f41985d"
+reason = "test pattern: CLI integration closures extracting fingerprints"
+
+[[ignore]]
+fingerprint = "b4c2845471b35c78"
+reason = "test pattern: extractor tests in core_with_syn"
+
+[[ignore]]
+fingerprint = "15aa50d59c3ce43d"
+reason = "test pattern: parser test_has_*_attr tests"
+
+[[ignore]]
+fingerprint = "1b1a295e656f6427"
+reason = "test pattern: node reindex tests"
+
+[[ignore]]
+fingerprint = "27724014c86e42d4"
+reason = "test pattern: scanner skip tests"
+
+[[ignore]]
+fingerprint = "401e82d58c3c1885"
+reason = "test pattern: parser test tagging tests"
+
+[[ignore]]
+fingerprint = "489e1f2eda932932"
+reason = "test pattern: text reporter empty output tests"
+
+[[ignore]]
+fingerprint = "559408d5e05e7d1d"
+reason = "test pattern: CLI sub-function tests"
+
+[[ignore]]
+fingerprint = "74299b61446139ea"
+reason = "test pattern: normalizer variable renaming tests"
+
+[[ignore]]
+fingerprint = "9f91e05c30ba9c2a"
+reason = "test pattern: grouper percentage helper tests"
+
+[[ignore]]
+fingerprint = "c43a592d029bdbbe"
+reason = "test pattern: grouper no-duplicates tests"
+
+[[ignore]]
+fingerprint = "df1aa65514669f67"
+reason = "test pattern: similarity score tests"
+
+[[ignore]]
+fingerprint = "e4d1732261addcf5"
+reason = "test pattern: CLI integration cargo_bin-assert tests"
+
+[[ignore]]
+fingerprint = "e5c78b93ca0014f0"
+reason = "test pattern: extractor loop body tests"
+
+[[ignore]]
+fingerprint = "ec41f6baebd90a97"
+reason = "test pattern: normalizer array/tuple tests"
+
+[[ignore]]
+fingerprint = "f6cbca656f13eb2b"
+reason = "test pattern: CLI integration cargo_bin-assert tests"
+
+[[ignore]]
+fingerprint = "7656e1e5c465c313"
+reason = "test fixture: sub_function_dupes near pair"
+
+[[ignore]]
+fingerprint = "7ba85b58aeaf5b4d"
+reason = "test pattern: CLI integration near-similar tests"
+
+[[ignore]]
+fingerprint = "52c269dbc6d6d37f"
+reason = "test pattern: CLI check percentage tests"
+
+[[ignore]]
+fingerprint = "59703f170ca82c7f"
+reason = "test pattern: config threshold tests"
+
+[[ignore]]
+fingerprint = "eaacfeb4ac1bac68"
+reason = "test pattern: fingerprint identity/difference tests"
+
+[[ignore]]
+fingerprint = "7032e6ea3c9d9266"
+reason = "test pattern: normalizer macro position tests"
+
+[[ignore]]
+fingerprint = "98682186baecf6d0"
+reason = "test pattern: let-else diverge block tests"
+
+[[ignore]]
+fingerprint = "e0e6adcadee67d3e"
+reason = "test pattern: config load tests"
+
+[[ignore]]
+fingerprint = "2ccd1ff2bc5e4fe6"
+reason = "test pattern: normalizer structural change tests"
+
+[[ignore]]
+fingerprint = "cbb324b96330538e"
+reason = "test pattern: parser extract impl/trait tests"
+
+[[ignore]]
+fingerprint = "612e2309111288aa"
+reason = "test pattern: normalizer macro tests"

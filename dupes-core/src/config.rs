@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 /// The subset of configuration relevant to language-specific parsing.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnalysisConfig {
     /// Minimum number of AST nodes for a code unit to be analyzed.
     pub min_nodes: usize,
@@ -44,7 +44,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             min_nodes: 10,
-            similarity_threshold: 0.8,
+            similarity_threshold: 0.9,
             exclude: Vec::new(),
             max_exact_duplicates: None,
             max_near_duplicates: None,
@@ -97,7 +97,8 @@ struct CargoPackageMetadata {
 
 impl Config {
     /// Extract the parsing-relevant subset of the configuration.
-    pub fn analysis_config(&self) -> AnalysisConfig {
+    #[must_use]
+    pub const fn analysis_config(&self) -> AnalysisConfig {
         AnalysisConfig {
             min_nodes: self.min_nodes,
             min_lines: self.min_lines,
@@ -109,8 +110,9 @@ impl Config {
     /// 2. dupes.toml in the project root
     /// 3. `[package.metadata.dupes]` in Cargo.toml
     /// 4. Defaults
+    #[must_use]
     pub fn load(root: &Path) -> Self {
-        let mut config = Config {
+        let mut config = Self {
             root: root.to_path_buf(),
             ..Default::default()
         };
@@ -147,7 +149,7 @@ impl Config {
             self.similarity_threshold = v;
         }
         if let Some(ref v) = fc.exclude {
-            self.exclude = v.clone();
+            self.exclude.clone_from(v);
         }
         if let Some(v) = fc.max_exact_duplicates {
             self.max_exact_duplicates = Some(v);
@@ -186,7 +188,7 @@ mod tests {
     fn default_config() {
         let config = Config::default();
         assert_eq!(config.min_nodes, 10);
-        assert!((config.similarity_threshold - 0.8).abs() < f64::EPSILON);
+        assert!((config.similarity_threshold - 0.9).abs() < f64::EPSILON);
         assert!(config.exclude.is_empty());
     }
 

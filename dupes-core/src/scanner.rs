@@ -12,6 +12,7 @@ pub struct ScanConfig {
 }
 
 impl ScanConfig {
+    #[must_use]
     pub fn new(root: PathBuf) -> Self {
         Self {
             root,
@@ -20,11 +21,13 @@ impl ScanConfig {
         }
     }
 
+    #[must_use]
     pub fn with_excludes(mut self, patterns: Vec<String>) -> Self {
         self.exclude_patterns = patterns;
         self
     }
 
+    #[must_use]
     pub fn with_extensions(mut self, extensions: Vec<String>) -> Self {
         self.extensions = extensions;
         self
@@ -33,6 +36,7 @@ impl ScanConfig {
 
 /// Scan for source files under the given config.
 /// Always skips `target/` directories.
+#[must_use]
 pub fn scan_files(config: &ScanConfig) -> Vec<PathBuf> {
     let mut files = Vec::new();
 
@@ -84,6 +88,7 @@ pub fn scan_files(config: &ScanConfig) -> Vec<PathBuf> {
 }
 
 /// Check if a path should be excluded based on exclusion patterns.
+#[must_use]
 pub fn is_excluded(path: &Path, patterns: &[String]) -> bool {
     let path_str = path.to_string_lossy();
     patterns

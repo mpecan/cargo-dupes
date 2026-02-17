@@ -9,6 +9,7 @@ use crate::node::{NodeKind, NormalizedNode};
 /// different child counts, only the shared prefix is compared; extra children in the
 /// longer list are not matched. This makes the score a conservative underestimate
 /// when child counts differ.
+#[must_use]
 pub fn similarity_score(a: &NormalizedNode, b: &NormalizedNode) -> f64 {
     let nodes_a = crate::node::count_nodes(a);
     let nodes_b = crate::node::count_nodes(b);

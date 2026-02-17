@@ -1,8 +1,7 @@
 use std::io;
-use std::path::Path;
 
 use crate::grouper::{DuplicateGroup, DuplicationStats};
-use crate::output::Reporter;
+use crate::output::{Reporter, display_path};
 
 fn format_with_commas(n: usize) -> String {
     let s = n.to_string();
@@ -22,17 +21,75 @@ pub struct TextReporter {
 }
 
 impl TextReporter {
-    pub fn new(base_path: Option<std::path::PathBuf>) -> Self {
+    #[must_use]
+    pub const fn new(base_path: Option<std::path::PathBuf>) -> Self {
         Self { base_path }
     }
 
-    fn relative_path<'a>(&self, path: &'a Path) -> std::borrow::Cow<'a, str> {
-        if let Some(base) = &self.base_path
-            && let Ok(rel) = path.strip_prefix(base)
-        {
-            return rel.to_string_lossy();
+    fn write_groups(
+        &self,
+        groups: &[DuplicateGroup],
+        writer: &mut dyn io::Write,
+        title: &str,
+        empty_message: Option<&str>,
+        show_similarity: bool,
+        show_parent: bool,
+    ) -> io::Result<()> {
+        if groups.is_empty() {
+            if let Some(msg) = empty_message {
+                writeln!(writer, "{msg}")?;
+            }
+            return Ok(());
         }
-        path.to_string_lossy()
+
+        writeln!(writer, "{title}")?;
+        writeln!(writer, "{}", "=".repeat(title.len()))?;
+        writeln!(writer)?;
+
+        for (i, group) in groups.iter().enumerate() {
+            let fp = group.fingerprint.to_hex();
+            if show_similarity {
+                writeln!(
+                    writer,
+                    "Group {} (fingerprint: {}, similarity: {:.0}%, {} members):",
+                    i + 1,
+                    fp,
+                    group.similarity * 100.0,
+                    group.members.len()
+                )?;
+            } else {
+                writeln!(
+                    writer,
+                    "Group {} (fingerprint: {}, {} members):",
+                    i + 1,
+                    fp,
+                    group.members.len()
+                )?;
+            }
+            for member in &group.members {
+                let parent = if show_parent {
+                    member
+                        .parent_name
+                        .as_deref()
+                        .map(|p| format!(" in {p}"))
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
+                writeln!(
+                    writer,
+                    "  - {} ({}){} at {}:{}-{}",
+                    member.name,
+                    member.kind,
+                    parent,
+                    display_path(self.base_path.as_deref(), &member.file),
+                    member.line_start,
+                    member.line_end,
+                )?;
+            }
+            writeln!(writer)?;
+        }
+        Ok(())
     }
 }
 
@@ -95,74 +152,25 @@ impl Reporter for TextReporter {
         groups: &[DuplicateGroup],
         writer: &mut dyn io::Write,
     ) -> io::Result<()> {
-        if groups.is_empty() {
-            writeln!(writer, "No exact duplicates found.")?;
-            return Ok(());
-        }
-
-        writeln!(writer, "Exact Duplicates")?;
-        writeln!(writer, "================")?;
-        writeln!(writer)?;
-
-        for (i, group) in groups.iter().enumerate() {
-            let fp = group.fingerprint.to_hex();
-            writeln!(
-                writer,
-                "Group {} (fingerprint: {}, {} members):",
-                i + 1,
-                fp,
-                group.members.len()
-            )?;
-            for member in &group.members {
-                writeln!(
-                    writer,
-                    "  - {} ({}) at {}:{}-{}",
-                    member.name,
-                    member.kind,
-                    self.relative_path(&member.file),
-                    member.line_start,
-                    member.line_end,
-                )?;
-            }
-            writeln!(writer)?;
-        }
-        Ok(())
+        self.write_groups(
+            groups,
+            writer,
+            "Exact Duplicates",
+            Some("No exact duplicates found."),
+            false,
+            false,
+        )
     }
 
     fn report_near(&self, groups: &[DuplicateGroup], writer: &mut dyn io::Write) -> io::Result<()> {
-        if groups.is_empty() {
-            writeln!(writer, "No near duplicates found.")?;
-            return Ok(());
-        }
-
-        writeln!(writer, "Near Duplicates")?;
-        writeln!(writer, "===============")?;
-        writeln!(writer)?;
-
-        for (i, group) in groups.iter().enumerate() {
-            let fp = group.fingerprint.to_hex();
-            writeln!(
-                writer,
-                "Group {} (fingerprint: {}, similarity: {:.0}%, {} members):",
-                i + 1,
-                fp,
-                group.similarity * 100.0,
-                group.members.len()
-            )?;
-            for member in &group.members {
-                writeln!(
-                    writer,
-                    "  - {} ({}) at {}:{}-{}",
-                    member.name,
-                    member.kind,
-                    self.relative_path(&member.file),
-                    member.line_start,
-                    member.line_end,
-                )?;
-            }
-            writeln!(writer)?;
-        }
-        Ok(())
+        self.write_groups(
+            groups,
+            writer,
+            "Near Duplicates",
+            Some("No near duplicates found."),
+            true,
+            false,
+        )
     }
 
     fn report_sub_exact(
@@ -170,43 +178,14 @@ impl Reporter for TextReporter {
         groups: &[DuplicateGroup],
         writer: &mut dyn io::Write,
     ) -> io::Result<()> {
-        if groups.is_empty() {
-            return Ok(());
-        }
-
-        writeln!(writer, "Sub-function Exact Duplicates")?;
-        writeln!(writer, "=============================")?;
-        writeln!(writer)?;
-
-        for (i, group) in groups.iter().enumerate() {
-            let fp = group.fingerprint.to_hex();
-            writeln!(
-                writer,
-                "Group {} (fingerprint: {}, {} members):",
-                i + 1,
-                fp,
-                group.members.len()
-            )?;
-            for member in &group.members {
-                let parent = member
-                    .parent_name
-                    .as_deref()
-                    .map(|p| format!(" in {p}"))
-                    .unwrap_or_default();
-                writeln!(
-                    writer,
-                    "  - {} ({}){} at {}:{}-{}",
-                    member.name,
-                    member.kind,
-                    parent,
-                    self.relative_path(&member.file),
-                    member.line_start,
-                    member.line_end,
-                )?;
-            }
-            writeln!(writer)?;
-        }
-        Ok(())
+        self.write_groups(
+            groups,
+            writer,
+            "Sub-function Exact Duplicates",
+            None,
+            false,
+            true,
+        )
     }
 
     fn report_sub_near(
@@ -214,44 +193,14 @@ impl Reporter for TextReporter {
         groups: &[DuplicateGroup],
         writer: &mut dyn io::Write,
     ) -> io::Result<()> {
-        if groups.is_empty() {
-            return Ok(());
-        }
-
-        writeln!(writer, "Sub-function Near Duplicates")?;
-        writeln!(writer, "============================")?;
-        writeln!(writer)?;
-
-        for (i, group) in groups.iter().enumerate() {
-            let fp = group.fingerprint.to_hex();
-            writeln!(
-                writer,
-                "Group {} (fingerprint: {}, similarity: {:.0}%, {} members):",
-                i + 1,
-                fp,
-                group.similarity * 100.0,
-                group.members.len()
-            )?;
-            for member in &group.members {
-                let parent = member
-                    .parent_name
-                    .as_deref()
-                    .map(|p| format!(" in {p}"))
-                    .unwrap_or_default();
-                writeln!(
-                    writer,
-                    "  - {} ({}){} at {}:{}-{}",
-                    member.name,
-                    member.kind,
-                    parent,
-                    self.relative_path(&member.file),
-                    member.line_start,
-                    member.line_end,
-                )?;
-            }
-            writeln!(writer)?;
-        }
-        Ok(())
+        self.write_groups(
+            groups,
+            writer,
+            "Sub-function Near Duplicates",
+            None,
+            true,
+            true,
+        )
     }
 }
 
@@ -367,8 +316,11 @@ mod tests {
 
     #[test]
     fn relative_path_stripping() {
-        let reporter = TextReporter::new(Some(PathBuf::from("/home/user/project")));
-        let result = reporter.relative_path(Path::new("/home/user/project/src/main.rs"));
+        let base = PathBuf::from("/home/user/project");
+        let result = display_path(
+            Some(base.as_path()),
+            std::path::Path::new("/home/user/project/src/main.rs"),
+        );
         assert_eq!(result, "src/main.rs");
     }
 }

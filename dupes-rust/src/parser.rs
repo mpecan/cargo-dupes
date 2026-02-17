@@ -40,7 +40,7 @@ struct CodeUnitExtractor {
 }
 
 impl CodeUnitExtractor {
-    fn new(file: PathBuf, min_node_count: usize, min_line_count: usize) -> Self {
+    const fn new(file: PathBuf, min_node_count: usize, min_line_count: usize) -> Self {
         Self {
             file,
             min_node_count,
@@ -278,6 +278,7 @@ pub fn parse_file(
 ///
 /// This is a lower-level convenience function. Prefer using [`crate::RustAnalyzer`]
 /// with [`dupes_core::analyze`] for the full pipeline.
+#[must_use]
 pub fn parse_files(
     paths: &[PathBuf],
     min_node_count: usize,

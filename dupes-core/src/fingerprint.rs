@@ -10,38 +10,43 @@ pub struct Fingerprint(u64);
 
 impl Fingerprint {
     /// Compute a fingerprint from a normalized node.
+    #[must_use]
     pub fn from_node(node: &NormalizedNode) -> Self {
         let mut hasher = DefaultHasher::new();
         node.hash(&mut hasher);
-        Fingerprint(hasher.finish())
+        Self(hasher.finish())
     }
 
     /// Compute a fingerprint from a signature + body pair.
+    #[must_use]
     pub fn from_sig_and_body(sig: &NormalizedNode, body: &NormalizedNode) -> Self {
         let mut hasher = DefaultHasher::new();
         sig.hash(&mut hasher);
         body.hash(&mut hasher);
-        Fingerprint(hasher.finish())
+        Self(hasher.finish())
     }
 
     /// Compute a composite fingerprint from a set of fingerprints.
     /// Sorts by u64 value for order-independence, then hashes the sorted sequence.
-    pub fn from_fingerprints(fps: &[Fingerprint]) -> Self {
+    #[must_use]
+    pub fn from_fingerprints(fps: &[Self]) -> Self {
         let mut sorted: Vec<u64> = fps.iter().map(|fp| fp.0).collect();
         sorted.sort_unstable();
         let mut hasher = DefaultHasher::new();
         for v in &sorted {
             v.hash(&mut hasher);
         }
-        Fingerprint(hasher.finish())
+        Self(hasher.finish())
     }
 
     /// Get the raw u64 value.
-    pub fn value(self) -> u64 {
+    #[must_use]
+    pub const fn value(self) -> u64 {
         self.0
     }
 
     /// Convert to hex string.
+    #[must_use]
     pub fn to_hex(self) -> String {
         format!("{:016x}", self.0)
     }

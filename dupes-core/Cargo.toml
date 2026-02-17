@@ -11,6 +11,9 @@ readme = "../README.md"
 keywords = ["duplicates", "code-quality", "lint", "ast"]
 categories = ["development-tools"]
 
+[lints]
+workspace = true
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
