@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/mpecan/cargo-dupes/compare/dupes-core-v0.2.0...dupes-core-v0.2.1) (2026-02-17)
+
+
+### Bug Fixes
+
+* use is_excluded helper in scan_files instead of inline duplicate ([#34](https://github.com/mpecan/cargo-dupes/issues/34)) ([c812c2d](https://github.com/mpecan/cargo-dupes/commit/c812c2db37dc43abf82f332447ab1fbb3d7de4d0))
+
 ## [0.2.0](https://github.com/mpecan/cargo-dupes/compare/dupes-core-v0.1.5...dupes-core-v0.2.0) (2026-02-17)
 
 
