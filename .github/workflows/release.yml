@@ -26,30 +26,51 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      - name: Wait for dupes-core to be available on crates.io
+      - name: Wait for dupes-core on crates.io
         shell: bash
         run: |
           set -euo pipefail
-          # Determine the version of dupes-core to wait for
-          DUPES_CORE_VERSION="$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "dupes-core") | .version')"
-          echo "Waiting for dupes-core version ${DUPES_CORE_VERSION} to be available on crates.io..."
-
-          MAX_ATTEMPTS=10
-          SLEEP_SECONDS=15
-
-          for attempt in $(seq 1 "${MAX_ATTEMPTS}"); do
-            if curl -fsS "https://crates.io/api/v1/crates/dupes-core/${DUPES_CORE_VERSION}" > /dev/null; then
-              echo "dupes-core ${DUPES_CORE_VERSION} is now available on crates.io."
+          VERSION="$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "dupes-core") | .version')"
+          echo "Waiting for dupes-core ${VERSION}..."
+          for attempt in $(seq 1 10); do
+            if curl -fsS "https://crates.io/api/v1/crates/dupes-core/${VERSION}" > /dev/null; then
+              echo "dupes-core ${VERSION} is available."
               exit 0
             fi
-
-            echo "Attempt ${attempt}/${MAX_ATTEMPTS}: dupes-core ${DUPES_CORE_VERSION} not yet available. Sleeping for ${SLEEP_SECONDS}s..."
-            sleep "${SLEEP_SECONDS}"
+            echo "Attempt ${attempt}/10: not yet available. Sleeping 15s..."
+            sleep 15
           done
-
-          echo "Timed out waiting for dupes-core ${DUPES_CORE_VERSION} to appear on crates.io."
+          echo "Timed out waiting for dupes-core ${VERSION}."
           exit 1
+
+      - name: Publish dupes-rust
+        run: cargo publish -p dupes-rust
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for dupes-rust on crates.io
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "dupes-rust") | .version')"
+          echo "Waiting for dupes-rust ${VERSION}..."
+          for attempt in $(seq 1 10); do
+            if curl -fsS "https://crates.io/api/v1/crates/dupes-rust/${VERSION}" > /dev/null; then
+              echo "dupes-rust ${VERSION} is available."
+              exit 0
+            fi
+            echo "Attempt ${attempt}/10: not yet available. Sleeping 15s..."
+            sleep 15
+          done
+          echo "Timed out waiting for dupes-rust ${VERSION}."
+          exit 1
+
       - name: Publish cargo-dupes
         run: cargo publish -p cargo-dupes
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Publish code-dupes
+        run: cargo publish -p code-dupes
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
