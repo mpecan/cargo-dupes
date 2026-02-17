@@ -35,26 +35,29 @@ pub struct DuplicationStats {
 }
 
 impl DuplicationStats {
-    /// Percentage of total lines that are exact duplicates.
-    pub fn exact_duplicate_percent(&self) -> f64 {
+    fn percent_of_total(&self, lines: usize) -> f64 {
         if self.total_lines == 0 {
             0.0
         } else {
-            self.exact_duplicate_lines as f64 / self.total_lines as f64 * 100.0
+            lines as f64 / self.total_lines as f64 * 100.0
         }
     }
 
+    /// Percentage of total lines that are exact duplicates.
+    #[must_use]
+    pub fn exact_duplicate_percent(&self) -> f64 {
+        self.percent_of_total(self.exact_duplicate_lines)
+    }
+
     /// Percentage of total lines that are near duplicates.
+    #[must_use]
     pub fn near_duplicate_percent(&self) -> f64 {
-        if self.total_lines == 0 {
-            0.0
-        } else {
-            self.near_duplicate_lines as f64 / self.total_lines as f64 * 100.0
-        }
+        self.percent_of_total(self.near_duplicate_lines)
     }
 }
 
 /// Group code units by exact fingerprint match.
+#[must_use]
 pub fn group_exact_duplicates(units: &[CodeUnit]) -> Vec<DuplicateGroup> {
     let mut groups: HashMap<Fingerprint, Vec<CodeUnit>> = HashMap::new();
 
@@ -88,6 +91,7 @@ pub fn group_exact_duplicates(units: &[CodeUnit]) -> Vec<DuplicateGroup> {
 
 /// Find near-duplicate groups above the similarity threshold.
 /// Pre-filters by CodeUnitKind and approximate size to reduce pairwise comparisons.
+#[must_use]
 pub fn find_near_duplicates(
     units: &[CodeUnit],
     threshold: f64,
@@ -127,7 +131,7 @@ pub fn find_near_duplicates(
     let unit_indices: HashMap<*const CodeUnit, usize> = candidates
         .iter()
         .enumerate()
-        .map(|(i, u)| (*u as *const CodeUnit, i))
+        .map(|(i, u)| (std::ptr::from_ref::<CodeUnit>(*u), i))
         .collect();
 
     for bucket in buckets.values() {
@@ -138,8 +142,8 @@ pub fn find_near_duplicates(
             for j in (i + 1)..bucket.len() {
                 let score = similarity::similarity_score(&bucket[i].body, &bucket[j].body);
                 if score >= threshold {
-                    let idx_i = unit_indices[&(bucket[i] as *const CodeUnit)];
-                    let idx_j = unit_indices[&(bucket[j] as *const CodeUnit)];
+                    let idx_i = unit_indices[&std::ptr::from_ref::<CodeUnit>(bucket[i])];
+                    let idx_j = unit_indices[&std::ptr::from_ref::<CodeUnit>(bucket[j])];
                     pairs.push((idx_i, idx_j, score));
                 }
             }
@@ -252,6 +256,7 @@ pub fn compute_stats(
 }
 
 /// Compute duplication statistics including sub-function results.
+#[must_use]
 pub fn compute_stats_with_sub(
     units: &[CodeUnit],
     exact_groups: &[DuplicateGroup],

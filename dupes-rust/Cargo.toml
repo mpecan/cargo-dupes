@@ -11,6 +11,9 @@ readme = "../README.md"
 keywords = ["duplicates", "code-quality", "lint", "ast", "rust"]
 categories = ["development-tools"]
 
+[lints]
+workspace = true
+
 [dependencies]
 dupes-core = { path = "../dupes-core", version = "0.1.5" }
 syn = { version = "2", features = ["full", "visit", "extra-traits"] }

@@ -1,24 +1,16 @@
 use std::io;
 
 use crate::grouper::{DuplicateGroup, DuplicationStats};
-use crate::output::Reporter;
+use crate::output::{Reporter, display_path};
 
 pub struct JsonReporter {
     pub base_path: Option<std::path::PathBuf>,
 }
 
 impl JsonReporter {
-    pub fn new(base_path: Option<std::path::PathBuf>) -> Self {
+    #[must_use]
+    pub const fn new(base_path: Option<std::path::PathBuf>) -> Self {
         Self { base_path }
-    }
-
-    fn relative_path(&self, path: &std::path::Path) -> String {
-        if let Some(base) = &self.base_path
-            && let Ok(rel) = path.strip_prefix(base)
-        {
-            return rel.to_string_lossy().to_string();
-        }
-        path.to_string_lossy().to_string()
     }
 }
 
@@ -44,7 +36,8 @@ struct JsonStats {
     sub_near_units: usize,
 }
 
-fn is_zero(v: &usize) -> bool {
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde skip_serializing_if requires &T
+const fn is_zero(v: &usize) -> bool {
     *v == 0
 }
 
@@ -91,15 +84,11 @@ impl Reporter for JsonReporter {
         groups: &[DuplicateGroup],
         writer: &mut dyn io::Write,
     ) -> io::Result<()> {
-        let json_groups: Vec<JsonGroup> = groups.iter().map(|g| self.to_json_group(g)).collect();
-        let json = serde_json::to_string_pretty(&json_groups).map_err(io::Error::other)?;
-        writeln!(writer, "{json}")
+        self.write_groups(groups, writer)
     }
 
     fn report_near(&self, groups: &[DuplicateGroup], writer: &mut dyn io::Write) -> io::Result<()> {
-        let json_groups: Vec<JsonGroup> = groups.iter().map(|g| self.to_json_group(g)).collect();
-        let json = serde_json::to_string_pretty(&json_groups).map_err(io::Error::other)?;
-        writeln!(writer, "{json}")
+        self.write_groups(groups, writer)
     }
 
     fn report_sub_exact(
@@ -107,12 +96,20 @@ impl Reporter for JsonReporter {
         groups: &[DuplicateGroup],
         writer: &mut dyn io::Write,
     ) -> io::Result<()> {
-        let json_groups: Vec<JsonGroup> = groups.iter().map(|g| self.to_json_group(g)).collect();
-        let json = serde_json::to_string_pretty(&json_groups).map_err(io::Error::other)?;
-        writeln!(writer, "{json}")
+        self.write_groups(groups, writer)
     }
 
     fn report_sub_near(
+        &self,
+        groups: &[DuplicateGroup],
+        writer: &mut dyn io::Write,
+    ) -> io::Result<()> {
+        self.write_groups(groups, writer)
+    }
+}
+
+impl JsonReporter {
+    fn write_groups(
         &self,
         groups: &[DuplicateGroup],
         writer: &mut dyn io::Write,
@@ -121,9 +118,7 @@ impl Reporter for JsonReporter {
         let json = serde_json::to_string_pretty(&json_groups).map_err(io::Error::other)?;
         writeln!(writer, "{json}")
     }
-}
 
-impl JsonReporter {
     fn to_json_group(&self, group: &DuplicateGroup) -> JsonGroup {
         JsonGroup {
             fingerprint: group.fingerprint.to_hex(),
@@ -134,7 +129,7 @@ impl JsonReporter {
                 .map(|m| JsonMember {
                     name: m.name.clone(),
                     kind: m.kind.to_string(),
-                    file: self.relative_path(&m.file),
+                    file: display_path(self.base_path.as_deref(), &m.file).into_owned(),
                     line_start: m.line_start,
                     line_end: m.line_end,
                 })

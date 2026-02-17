@@ -35,7 +35,8 @@ fn normalize_macro(mac: &syn::Macro, ctx: &mut NormalizationContext) -> Normaliz
 
 // -- Normalization functions --------------------------------------------------
 
-pub fn normalize_lit(lit: &syn::Lit) -> NormalizedNode {
+#[must_use]
+pub const fn normalize_lit(lit: &syn::Lit) -> NormalizedNode {
     match lit {
         syn::Lit::Str(_) => NormalizedNode::leaf(NodeKind::Literal(LiteralKind::Str)),
         syn::Lit::ByteStr(_) => NormalizedNode::leaf(NodeKind::Literal(LiteralKind::ByteStr)),
@@ -49,7 +50,8 @@ pub fn normalize_lit(lit: &syn::Lit) -> NormalizedNode {
     }
 }
 
-pub fn normalize_bin_op(op: &syn::BinOp) -> BinOpKind {
+#[must_use]
+pub const fn normalize_bin_op(op: &syn::BinOp) -> BinOpKind {
     match op {
         syn::BinOp::Add(_) => BinOpKind::Add,
         syn::BinOp::Sub(_) => BinOpKind::Sub,
@@ -83,7 +85,8 @@ pub fn normalize_bin_op(op: &syn::BinOp) -> BinOpKind {
     }
 }
 
-pub fn normalize_un_op(op: &syn::UnOp) -> UnOpKind {
+#[must_use]
+pub const fn normalize_un_op(op: &syn::UnOp) -> UnOpKind {
     match op {
         syn::UnOp::Deref(_) => UnOpKind::Deref,
         syn::UnOp::Not(_) => UnOpKind::Not,
@@ -265,6 +268,7 @@ pub fn normalize_pat(pat: &syn::Pat, ctx: &mut NormalizationContext) -> Normaliz
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn normalize_expr(expr: &syn::Expr, ctx: &mut NormalizationContext) -> NormalizedNode {
     match expr {
         syn::Expr::Lit(el) => normalize_lit(&el.lit),
@@ -272,7 +276,7 @@ pub fn normalize_expr(expr: &syn::Expr, ctx: &mut NormalizationContext) -> Norma
             if ep.path.segments.len() == 1 {
                 let seg = &ep.path.segments[0];
                 let ident = seg.ident.to_string();
-                let kind = if ident.chars().next().is_some_and(|c| c.is_uppercase()) {
+                let kind = if ident.chars().next().is_some_and(char::is_uppercase) {
                     PlaceholderKind::Type
                 } else {
                     PlaceholderKind::Variable
@@ -286,7 +290,7 @@ pub fn normalize_expr(expr: &syn::Expr, ctx: &mut NormalizationContext) -> Norma
                     .iter()
                     .map(|seg| {
                         let ident = seg.ident.to_string();
-                        let kind = if ident.chars().next().is_some_and(|c| c.is_uppercase()) {
+                        let kind = if ident.chars().next().is_some_and(char::is_uppercase) {
                             PlaceholderKind::Type
                         } else {
                             PlaceholderKind::Variable
@@ -595,23 +599,30 @@ pub fn normalize_signature(sig: &syn::Signature, ctx: &mut NormalizationContext)
 
 // -- Public entry points ------------------------------------------------------
 
-/// Normalize a top-level function.
-pub fn normalize_item_fn(func: &syn::ItemFn) -> (NormalizedNode, NormalizedNode) {
+fn normalize_fn_parts(
+    sig: &syn::Signature,
+    block: &syn::Block,
+) -> (NormalizedNode, NormalizedNode) {
     let mut ctx = NormalizationContext::new();
-    let sig = normalize_signature(&func.sig, &mut ctx);
-    let body = normalize_block(&func.block, &mut ctx);
+    let sig = normalize_signature(sig, &mut ctx);
+    let body = normalize_block(block, &mut ctx);
     (sig, body)
+}
+
+/// Normalize a top-level function.
+#[must_use]
+pub fn normalize_item_fn(func: &syn::ItemFn) -> (NormalizedNode, NormalizedNode) {
+    normalize_fn_parts(&func.sig, &func.block)
 }
 
 /// Normalize a method within an impl block.
+#[must_use]
 pub fn normalize_impl_item_fn(method: &syn::ImplItemFn) -> (NormalizedNode, NormalizedNode) {
-    let mut ctx = NormalizationContext::new();
-    let sig = normalize_signature(&method.sig, &mut ctx);
-    let body = normalize_block(&method.block, &mut ctx);
-    (sig, body)
+    normalize_fn_parts(&method.sig, &method.block)
 }
 
 /// Normalize a closure expression.
+#[must_use]
 pub fn normalize_closure_expr(closure: &syn::ExprClosure) -> NormalizedNode {
     let mut ctx = NormalizationContext::new();
     let mut children = vec![normalize_expr(&closure.body, &mut ctx)];
@@ -620,6 +631,7 @@ pub fn normalize_closure_expr(closure: &syn::ExprClosure) -> NormalizedNode {
 }
 
 /// Normalize an impl block -- normalizes each method body.
+#[must_use]
 pub fn normalize_impl_block(imp: &syn::ItemImpl) -> Vec<(String, NormalizedNode, NormalizedNode)> {
     imp.items
         .iter()

@@ -199,12 +199,13 @@ pub enum NodeKind {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NormalizedNode {
     pub kind: NodeKind,
-    pub children: Vec<NormalizedNode>,
+    pub children: Vec<Self>,
 }
 
 impl NormalizedNode {
     /// Create a leaf node (no children).
-    pub fn leaf(kind: NodeKind) -> Self {
+    #[must_use]
+    pub const fn leaf(kind: NodeKind) -> Self {
         Self {
             kind,
             children: vec![],
@@ -212,22 +213,25 @@ impl NormalizedNode {
     }
 
     /// Create a node with children.
-    pub fn with_children(kind: NodeKind, children: Vec<NormalizedNode>) -> Self {
+    #[must_use]
+    pub const fn with_children(kind: NodeKind, children: Vec<Self>) -> Self {
         Self { kind, children }
     }
 
     /// Create a None sentinel node.
-    pub fn none() -> Self {
+    #[must_use]
+    pub const fn none() -> Self {
         Self::leaf(NodeKind::None)
     }
 
     /// Convert an Option<NormalizedNode> to a node, using None sentinel for absent values.
-    pub fn opt(node: Option<NormalizedNode>) -> Self {
+    pub fn opt(node: Option<Self>) -> Self {
         node.unwrap_or_else(Self::none)
     }
 
     /// Check if this is a None sentinel node.
-    pub fn is_none(&self) -> bool {
+    #[must_use]
+    pub const fn is_none(&self) -> bool {
         matches!(self.kind, NodeKind::None)
     }
 }
@@ -241,6 +245,7 @@ pub struct NormalizationContext {
 }
 
 impl NormalizationContext {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             mappings: HashMap::new(),
@@ -323,6 +328,7 @@ fn apply_reindex(
 /// Re-index all placeholders in a sub-tree so that indices start from 0
 /// per kind, assigned by first-occurrence depth-first order.
 /// This allows comparing sub-trees extracted from different function contexts.
+#[must_use]
 pub fn reindex_placeholders(node: &NormalizedNode) -> NormalizedNode {
     let mut order = Vec::new();
     let mut seen = std::collections::HashSet::new();

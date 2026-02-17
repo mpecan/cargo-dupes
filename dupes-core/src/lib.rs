@@ -65,7 +65,7 @@ pub fn analyze(
         }
     }
 
-    analyze_units(units, warnings, config)
+    analyze_units(&units, warnings, config)
 }
 
 /// Run the analysis pipeline on pre-parsed code units.
@@ -73,17 +73,16 @@ pub fn analyze(
 /// The caller is responsible for scanning files and parsing them into `CodeUnit`s.
 /// This function handles grouping, similarity detection, ignore filtering, and stats.
 pub fn analyze_units(
-    units: Vec<CodeUnit>,
+    units: &[CodeUnit],
     warnings: Vec<String>,
     config: &Config,
 ) -> error::Result<AnalysisResult> {
     // 1. Group exact duplicates
-    let exact_groups = grouper::group_exact_duplicates(&units);
+    let exact_groups = grouper::group_exact_duplicates(units);
 
     // 2. Find near-duplicates
     let exact_fps: Vec<_> = exact_groups.iter().map(|g| g.fingerprint).collect();
-    let near_groups =
-        grouper::find_near_duplicates(&units, config.similarity_threshold, &exact_fps);
+    let near_groups = grouper::find_near_duplicates(units, config.similarity_threshold, &exact_fps);
 
     // 3. Sub-function duplicate detection (opt-in)
     let (sub_exact_groups, sub_near_groups) = if config.sub_function {
@@ -135,7 +134,7 @@ pub fn analyze_units(
 
     // 6. Compute stats
     let stats = grouper::compute_stats_with_sub(
-        &units,
+        units,
         &exact_groups,
         &near_groups,
         &sub_exact_groups,

@@ -14,6 +14,7 @@ pub struct SubUnit {
 /// (if branches, match arm bodies, loop bodies, closure bodies).
 /// Each sub-tree is re-indexed to canonical placeholder form.
 /// Only sub-trees meeting `min_node_count` are returned.
+#[must_use]
 pub fn extract_sub_units(node: &NormalizedNode, min_node_count: usize) -> Vec<SubUnit> {
     let mut results = Vec::new();
     extract_recursive(node, min_node_count, &mut results);

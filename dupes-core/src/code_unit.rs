@@ -21,15 +21,15 @@ pub enum CodeUnitKind {
 impl std::fmt::Display for CodeUnitKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CodeUnitKind::Function => write!(f, "function"),
-            CodeUnitKind::Method => write!(f, "method"),
-            CodeUnitKind::Closure => write!(f, "closure"),
-            CodeUnitKind::ImplBlock => write!(f, "impl block"),
-            CodeUnitKind::TraitImplBlock => write!(f, "trait impl block"),
-            CodeUnitKind::IfBranch => write!(f, "if branch"),
-            CodeUnitKind::MatchArm => write!(f, "match arm"),
-            CodeUnitKind::LoopBody => write!(f, "loop body"),
-            CodeUnitKind::Block => write!(f, "block"),
+            Self::Function => write!(f, "function"),
+            Self::Method => write!(f, "method"),
+            Self::Closure => write!(f, "closure"),
+            Self::ImplBlock => write!(f, "impl block"),
+            Self::TraitImplBlock => write!(f, "trait impl block"),
+            Self::IfBranch => write!(f, "if branch"),
+            Self::MatchArm => write!(f, "match arm"),
+            Self::LoopBody => write!(f, "loop body"),
+            Self::Block => write!(f, "block"),
         }
     }
 }
