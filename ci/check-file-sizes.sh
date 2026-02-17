@@ -4,7 +4,7 @@
 
 MAX_LINES=${1:-800}
 
-violations=$(find dupes-core dupes-rust cargo-dupes -name '*.rs' -exec wc -l {} + | \
+violations=$(find dupes-core dupes-rust cargo-dupes code-dupes -name '*.rs' -exec wc -l {} + | \
   awk -v max="$MAX_LINES" '$1 > max && $0 !~ /total/' | sort -rn)
 
 if [ -n "$violations" ]; then

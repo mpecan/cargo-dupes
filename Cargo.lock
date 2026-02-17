@@ -172,6 +172,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3e64b0cc0439b12df2fa678eae89a1c56a529fd067a9115f7827f1fffd22b32"
 
 [[package]]
+name = "code-dupes"
+version = "0.1.5"
+dependencies = [
+ "assert_cmd",
+ "clap",
+ "dupes-core",
+ "dupes-rust",
+ "predicates",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "colorchoice"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -187,6 +200,7 @@ checksum = "6184e33543162437515c2e2b48714794e37845ec9851711914eec9d308f6ebe8"
 name = "dupes-core"
 version = "0.1.5"
 dependencies = [
+ "clap",
  "serde",
  "serde_json",
  "tempfile",
