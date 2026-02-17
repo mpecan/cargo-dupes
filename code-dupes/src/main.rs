@@ -1,28 +1,29 @@
 use std::path::PathBuf;
 use std::process;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 
-use dupes_core::cli::{self, CliOverrides, Command, OutputFormat};
+use dupes_core::analyzer::LanguageAnalyzer;
+use dupes_core::cli::{self, CliError, CliOverrides, Command, OutputFormat};
 use dupes_rust::RustAnalyzer;
 
 #[derive(Parser)]
 #[command(
-    name = "cargo-dupes",
+    name = "code-dupes",
     version,
-    about = "Detect duplicate code in Rust codebases"
+    about = "Detect duplicate code across multiple languages"
 )]
 struct Cli {
-    /// When invoked as `cargo dupes`, cargo passes "dupes" as the first arg.
-    #[arg(hide = true, default_value = "")]
-    _cargo_subcommand: String,
-
     #[command(subcommand)]
     command: Option<Command>,
 
     /// Path to analyze (defaults to current directory).
     #[arg(short, long, global = true)]
     path: Option<PathBuf>,
+
+    /// Language to analyze. Auto-detected from file extensions if omitted.
+    #[arg(short, long, global = true)]
+    language: Option<Language>,
 
     /// Minimum AST node count for analysis.
     #[arg(long, global = true)]
@@ -57,10 +58,42 @@ struct Cli {
     min_sub_nodes: Option<usize>,
 }
 
+#[derive(Clone, ValueEnum)]
+enum Language {
+    Rust,
+}
+
+/// Create a language analyzer for the given language.
+fn resolve_analyzer(language: &Language) -> Box<dyn LanguageAnalyzer> {
+    match language {
+        Language::Rust => Box::new(RustAnalyzer::new()),
+    }
+}
+
+/// Auto-detect language by scanning for files matching known analyzer extensions.
+fn auto_detect_language(root: &std::path::Path) -> Result<Language, CliError> {
+    let analyzer = RustAnalyzer::new();
+    let scan_config = dupes_core::scanner::ScanConfig::new(root.to_path_buf()).with_extensions(
+        analyzer
+            .file_extensions()
+            .iter()
+            .map(|ext| (*ext).to_string())
+            .collect(),
+    );
+    let files = dupes_core::scanner::scan_files(&scan_config);
+
+    if !files.is_empty() {
+        return Ok(Language::Rust);
+    }
+
+    Err(CliError::NoRecognizedFiles)
+}
+
 fn main() {
     let Cli {
         command,
         path,
+        language,
         min_nodes,
         min_lines,
         threshold,
@@ -69,7 +102,6 @@ fn main() {
         exclude_tests,
         sub_function,
         min_sub_nodes,
-        ..
     } = Cli::parse();
 
     let root =
@@ -86,7 +118,18 @@ fn main() {
         } => cli::cmd_ignore(&root, fingerprint, reason.clone(), &mut writer),
         Command::Ignored => cli::cmd_ignored(&root, &mut writer),
         _ => {
-            let analyzer = RustAnalyzer::new();
+            let language = match language {
+                Some(l) => l,
+                None => match auto_detect_language(&root) {
+                    Ok(l) => l,
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        process::exit(e.exit_code());
+                    }
+                },
+            };
+            let analyzer = resolve_analyzer(&language);
+
             let overrides = CliOverrides {
                 min_nodes,
                 min_lines,
@@ -96,7 +139,7 @@ fn main() {
                 sub_function: if sub_function { Some(true) } else { None },
                 min_sub_nodes,
             };
-            let output = match cli::run_analysis(&analyzer, &root, format, &overrides) {
+            let output = match cli::run_analysis(analyzer.as_ref(), &root, format, &overrides) {
                 Ok(o) => o,
                 Err(e) => {
                     eprintln!("Error: {e}");
@@ -139,7 +182,7 @@ fn main() {
     };
 
     if let Err(e) = result {
-        if matches!(e, cli::CliError::CheckFailed) {
+        if matches!(e, CliError::CheckFailed) {
             process::exit(1);
         } else {
             eprintln!("Error: {e}");

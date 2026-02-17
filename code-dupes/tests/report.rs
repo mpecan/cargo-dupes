@@ -1,11 +1,11 @@
 mod common;
 
-use common::{cargo_dupes, fixture_path};
+use common::{code_dupes, fixture_path};
 use predicates::prelude::*;
 
 #[test]
 fn report_exact_dupes_fixture() {
-    cargo_dupes()
+    code_dupes()
         .args([
             "--path",
             fixture_path("exact_dupes").to_str().unwrap(),
@@ -19,7 +19,7 @@ fn report_exact_dupes_fixture() {
 
 #[test]
 fn report_no_dupes_fixture() {
-    cargo_dupes()
+    code_dupes()
         .args([
             "--path",
             fixture_path("no_dupes").to_str().unwrap(),
@@ -32,7 +32,7 @@ fn report_no_dupes_fixture() {
 
 #[test]
 fn report_mixed_fixture() {
-    cargo_dupes()
+    code_dupes()
         .args(["--path", fixture_path("mixed").to_str().unwrap(), "report"])
         .assert()
         .success()
@@ -42,7 +42,7 @@ fn report_mixed_fixture() {
 
 #[test]
 fn stats_shows_summary() {
-    cargo_dupes()
+    code_dupes()
         .args([
             "--path",
             fixture_path("exact_dupes").to_str().unwrap(),
@@ -56,7 +56,7 @@ fn stats_shows_summary() {
 
 #[test]
 fn stats_shows_duplicate_lines() {
-    cargo_dupes()
+    code_dupes()
         .args([
             "--path",
             fixture_path("exact_dupes").to_str().unwrap(),
@@ -70,8 +70,7 @@ fn stats_shows_duplicate_lines() {
 
 #[test]
 fn default_command_is_report() {
-    // Running without a subcommand should behave like 'report'
-    cargo_dupes()
+    code_dupes()
         .args(["--path", fixture_path("exact_dupes").to_str().unwrap()])
         .assert()
         .success()
@@ -81,7 +80,7 @@ fn default_command_is_report() {
 
 #[test]
 fn near_dupes_detected() {
-    cargo_dupes()
+    code_dupes()
         .args([
             "--path",
             fixture_path("near_dupes").to_str().unwrap(),
@@ -98,7 +97,7 @@ fn near_dupes_detected() {
 
 #[test]
 fn json_format_stats() {
-    let output = cargo_dupes()
+    let output = code_dupes()
         .args([
             "--path",
             fixture_path("exact_dupes").to_str().unwrap(),
@@ -118,7 +117,7 @@ fn json_format_stats() {
 
 #[test]
 fn json_format_report() {
-    let output = cargo_dupes()
+    let output = code_dupes()
         .args([
             "--path",
             fixture_path("exact_dupes").to_str().unwrap(),
@@ -146,7 +145,7 @@ fn json_format_report() {
 
 #[test]
 fn json_stats_includes_line_counts() {
-    let output = cargo_dupes()
+    let output = code_dupes()
         .args([
             "--path",
             fixture_path("exact_dupes").to_str().unwrap(),
