@@ -1,6 +1,6 @@
 [package]
 name = "cargo-dupes"
-version = "0.2.0"
+version = "0.2.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -16,8 +16,8 @@ categories = ["development-tools::cargo-plugins", "development-tools"]
 workspace = true
 
 [dependencies]
-dupes-core = { path = "../dupes-core", version = "0.2.0", features = ["cli"] }
-dupes-rust = { path = "../dupes-rust", version = "0.2.0" }
+dupes-core = { path = "../dupes-core", version = "0.2.1", features = ["cli"] }
+dupes-rust = { path = "../dupes-rust", version = "0.2.1" }
 clap = { version = "4", features = ["derive"] }
 
 [dev-dependencies]
