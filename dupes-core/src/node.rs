@@ -73,6 +73,8 @@ pub enum NodeKind {
     // Blocks and statements
     Block,
     LetBinding,
+    Semi,
+    Paren,
 
     // Literals and identifiers
     Literal(LiteralKind),
@@ -81,12 +83,14 @@ pub enum NodeKind {
     // Operations
     BinaryOp(BinOpKind),
     UnaryOp(UnOpKind),
+    Range,
 
     // Calls and access
     Call,
     MethodCall,
     FieldAccess,
     Index,
+    Path,
 
     // Closures and functions
     Closure,
@@ -123,6 +127,7 @@ pub enum NodeKind {
     Loop,
     While,
     ForLoop,
+    LetExpr,
 
     // Patterns
     PatWild,
@@ -163,21 +168,6 @@ pub enum NodeKind {
     // Opaque — unsupported constructs
     Opaque,
 
-    // Range expressions
-    Range,
-
-    // Path expression
-    Path,
-
-    // Let-in-condition (if let / while let)
-    LetExpr,
-
-    // Grouped expression (parenthesized)
-    Paren,
-
-    // Semicolon expression (expression statement)
-    Semi,
-
     /// Sentinel for absent optional children, ensuring fixed child positions
     /// for correct zip alignment in similarity comparison.
     None,
@@ -192,7 +182,7 @@ pub enum NodeKind {
 ///
 /// - **Fixed with None sentinels** (always same child count):
 ///   - `If` -> [condition, then_branch, else_or_None]
-///   - `LetBinding` -> [pattern, type_or_None, init_or_None]
+///   - `LetBinding` -> [pattern, type_or_None, init_or_None, diverge_or_None]
 ///   - `Range` / `PatRange` -> [from_or_None, to_or_None]
 ///   - `MatchArm` -> [pattern, guard_or_None, body]
 /// - **Fixed children first, variable after** (for zip alignment):
@@ -426,6 +416,7 @@ mod tests {
                                 NormalizedNode::leaf(NodeKind::Literal(LiteralKind::Int)),
                             ],
                         ),
+                        NormalizedNode::none(),
                     ],
                 ),
                 NormalizedNode::leaf(NodeKind::Placeholder(PlaceholderKind::Variable, 2)),
@@ -452,6 +443,7 @@ mod tests {
                                 NormalizedNode::leaf(NodeKind::Literal(LiteralKind::Int)),
                             ],
                         ),
+                        NormalizedNode::none(),
                     ],
                 ),
                 NormalizedNode::leaf(NodeKind::Placeholder(PlaceholderKind::Variable, 7)),
@@ -512,6 +504,51 @@ mod tests {
         // If(1) + Placeholder(1) + Block(1) = 3 (None is not counted)
         assert_eq!(count_nodes(&node), 3);
     }
+
+    // -- NormalizationContext tests --
+
+    #[test]
+    fn context_assigns_sequential_indices() {
+        let mut ctx = NormalizationContext::new();
+        assert_eq!(ctx.placeholder("x", PlaceholderKind::Variable), 0);
+        assert_eq!(ctx.placeholder("y", PlaceholderKind::Variable), 1);
+        assert_eq!(ctx.placeholder("z", PlaceholderKind::Variable), 2);
+    }
+
+    #[test]
+    fn context_returns_same_index_for_same_name() {
+        let mut ctx = NormalizationContext::new();
+        let first = ctx.placeholder("x", PlaceholderKind::Variable);
+        let second = ctx.placeholder("x", PlaceholderKind::Variable);
+        assert_eq!(first, second);
+        assert_eq!(first, 0);
+    }
+
+    #[test]
+    fn context_per_kind_counters_are_independent() {
+        let mut ctx = NormalizationContext::new();
+        let var_idx = ctx.placeholder("foo", PlaceholderKind::Variable);
+        let fn_idx = ctx.placeholder("foo", PlaceholderKind::Function);
+        let type_idx = ctx.placeholder("foo", PlaceholderKind::Type);
+        // Each kind starts from 0 independently
+        assert_eq!(var_idx, 0);
+        assert_eq!(fn_idx, 0);
+        assert_eq!(type_idx, 0);
+    }
+
+    #[test]
+    fn context_same_name_different_kind_are_distinct() {
+        let mut ctx = NormalizationContext::new();
+        ctx.placeholder("x", PlaceholderKind::Variable);
+        ctx.placeholder("x", PlaceholderKind::Function);
+        // Second variable should get index 1, not 0
+        let y_var = ctx.placeholder("y", PlaceholderKind::Variable);
+        assert_eq!(y_var, 1);
+        let y_fn = ctx.placeholder("y", PlaceholderKind::Function);
+        assert_eq!(y_fn, 1);
+    }
+
+    // -- count_nodes tests --
 
     #[test]
     fn count_nodes_basic() {

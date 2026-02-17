@@ -326,11 +326,8 @@ pub fn normalize_expr(expr: &syn::Expr, ctx: &mut NormalizationContext) -> Norma
         }
         // FieldAccess -> [base, field]
         syn::Expr::Field(ef) => {
-            let name = match &ef.member {
-                syn::Member::Named(ident) => ident.to_string(),
-                syn::Member::Unnamed(idx) => idx.index.to_string(),
-            };
-            let field_idx = ctx.placeholder(&name, PlaceholderKind::Variable);
+            let field_idx =
+                ctx.placeholder(&member_to_string(&ef.member), PlaceholderKind::Variable);
             NormalizedNode::with_children(
                 NodeKind::FieldAccess,
                 vec![
@@ -414,11 +411,8 @@ pub fn normalize_expr(expr: &syn::Expr, ctx: &mut NormalizationContext) -> Norma
                 es.rest.as_ref().map(|e| normalize_expr(e, ctx)),
             )];
             children.extend(es.fields.iter().map(|f| {
-                let name = match &f.member {
-                    syn::Member::Named(ident) => ident.to_string(),
-                    syn::Member::Unnamed(idx) => idx.index.to_string(),
-                };
-                let field_idx = ctx.placeholder(&name, PlaceholderKind::Variable);
+                let field_idx =
+                    ctx.placeholder(&member_to_string(&f.member), PlaceholderKind::Variable);
                 NormalizedNode::with_children(
                     NodeKind::FieldValue,
                     vec![
@@ -516,7 +510,7 @@ pub fn normalize_expr(expr: &syn::Expr, ctx: &mut NormalizationContext) -> Norma
 
 pub fn normalize_stmt(stmt: &syn::Stmt, ctx: &mut NormalizationContext) -> NormalizedNode {
     match stmt {
-        // LetBinding -> [pattern, type_or_None, init_or_None]
+        // LetBinding -> [pattern, type_or_None, init_or_None, diverge_or_None]
         syn::Stmt::Local(local) => NormalizedNode::with_children(
             NodeKind::LetBinding,
             vec![
@@ -527,6 +521,13 @@ pub fn normalize_stmt(stmt: &syn::Stmt, ctx: &mut NormalizationContext) -> Norma
                         .init
                         .as_ref()
                         .map(|init| normalize_expr(&init.expr, ctx)),
+                ),
+                NormalizedNode::opt(
+                    local
+                        .init
+                        .as_ref()
+                        .and_then(|init| init.diverge.as_ref())
+                        .map(|(_, expr)| normalize_expr(expr, ctx)),
                 ),
             ],
         ),

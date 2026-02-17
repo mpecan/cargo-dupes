@@ -599,3 +599,80 @@ fn nested_structures_extracted_recursively() {
     assert_eq!(if_branches.len(), 2);
     assert_eq!(loops.len(), 1);
 }
+
+#[test]
+fn extracts_while_loop_bodies() {
+    let body = parse_and_extract_body(
+        "fn foo(x: i32) { let mut i = 0; while i < x { let y = i + 1; i = y; } }",
+    );
+    let subs = dupes_core::extractor::extract_sub_units(&body, 1);
+    let loops: Vec<_> = subs
+        .iter()
+        .filter(|s| s.kind == CodeUnitKind::LoopBody)
+        .collect();
+    assert_eq!(loops.len(), 1);
+    assert_eq!(loops[0].description, "while body");
+}
+
+#[test]
+fn extracts_bare_loop_bodies() {
+    let body = parse_and_extract_body(
+        "fn foo(x: i32) -> i32 { let mut i = 0; loop { i += 1; if i > x { break i; } } }",
+    );
+    let subs = dupes_core::extractor::extract_sub_units(&body, 1);
+    let loops: Vec<_> = subs
+        .iter()
+        .filter(|s| s.kind == CodeUnitKind::LoopBody)
+        .collect();
+    assert_eq!(loops.len(), 1);
+    assert_eq!(loops[0].description, "loop body");
+}
+
+#[test]
+fn extracts_closure_bodies() {
+    let body = parse_and_extract_body(
+        r#"fn foo(data: Vec<i32>) -> Vec<i32> {
+            data.iter().map(|x| {
+                let y = x + 1;
+                let z = y * 2;
+                z
+            }).collect()
+        }"#,
+    );
+    let subs = dupes_core::extractor::extract_sub_units(&body, 1);
+    let closures: Vec<_> = subs
+        .iter()
+        .filter(|s| s.kind == CodeUnitKind::Block && s.description == "closure body")
+        .collect();
+    assert_eq!(closures.len(), 1);
+}
+
+#[test]
+fn let_else_diverge_blocks_differ() {
+    // Two functions with same init but different diverge blocks should NOT be exact duplicates
+    let f1 = parse_fn("fn foo(x: Option<i32>) -> i32 { let Some(v) = x else { return 0; }; v }");
+    let f2 = parse_fn("fn bar(x: Option<i32>) -> i32 { let Some(v) = x else { panic!(); }; v }");
+    let (sig1, body1) = normalize_item_fn(&f1);
+    let (sig2, body2) = normalize_item_fn(&f2);
+    let fp1 = Fingerprint::from_sig_and_body(&sig1, &body1);
+    let fp2 = Fingerprint::from_sig_and_body(&sig2, &body2);
+    assert_ne!(
+        fp1, fp2,
+        "different let-else diverge blocks should produce different fingerprints"
+    );
+}
+
+#[test]
+fn let_else_same_diverge_blocks_match() {
+    // Two functions with identical structure including diverge block should match
+    let f1 = parse_fn("fn foo(x: Option<i32>) -> i32 { let Some(v) = x else { return 0; }; v }");
+    let f2 = parse_fn("fn bar(y: Option<i32>) -> i32 { let Some(w) = y else { return 0; }; w }");
+    let (sig1, body1) = normalize_item_fn(&f1);
+    let (sig2, body2) = normalize_item_fn(&f2);
+    let fp1 = Fingerprint::from_sig_and_body(&sig1, &body1);
+    let fp2 = Fingerprint::from_sig_and_body(&sig2, &body2);
+    assert_eq!(
+        fp1, fp2,
+        "identical let-else structures with renamed vars should match"
+    );
+}
