@@ -21,5 +21,16 @@
     "dupes-rust": {},
     "cargo-dupes": {},
     "code-dupes": {}
-  }
+  },
+  "plugins": [
+    {
+      "type": "cargo-workspace",
+      "merge": false
+    },
+    {
+      "type": "linked-versions",
+      "groupName": "workspace",
+      "components": ["dupes-core", "dupes-rust", "cargo-dupes", "code-dupes"]
+    }
+  ]
 }
