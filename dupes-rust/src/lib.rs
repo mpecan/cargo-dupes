@@ -85,6 +85,6 @@ mod tests {
         assert!(test[0].is_test);
 
         // Default is_test_code() delegates to is_test field
-        assert!(!analyzer.is_test_code(&units[0]));
+        assert!(!analyzer.is_test_code(prod[0]));
     }
 }
