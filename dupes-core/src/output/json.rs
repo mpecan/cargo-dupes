@@ -148,7 +148,7 @@ mod tests {
     use super::*;
     use crate::code_unit::{CodeUnit, CodeUnitKind};
     use crate::fingerprint::Fingerprint;
-    use crate::node::NormalizedNode;
+    use crate::node::{NodeKind, NormalizedNode};
     use std::path::PathBuf;
 
     fn make_unit(name: &str, file: &str, line_start: usize, line_end: usize) -> CodeUnit {
@@ -158,9 +158,9 @@ mod tests {
             file: PathBuf::from(file),
             line_start,
             line_end,
-            signature: NormalizedNode::Opaque,
-            body: NormalizedNode::Block(vec![]),
-            fingerprint: Fingerprint::from_node(&NormalizedNode::Opaque),
+            signature: NormalizedNode::leaf(NodeKind::Opaque),
+            body: NormalizedNode::with_children(NodeKind::Block, vec![]),
+            fingerprint: Fingerprint::from_node(&NormalizedNode::leaf(NodeKind::Opaque)),
             node_count: 10,
             parent_name: None,
         }
@@ -205,7 +205,7 @@ mod tests {
     fn json_report_exact_with_groups() {
         let reporter = JsonReporter::new(Some(PathBuf::from("/project")));
         let group = DuplicateGroup {
-            fingerprint: Fingerprint::from_node(&NormalizedNode::Opaque),
+            fingerprint: Fingerprint::from_node(&NormalizedNode::leaf(NodeKind::Opaque)),
             members: vec![
                 make_unit("foo", "/project/src/a.rs", 10, 20),
                 make_unit("bar", "/project/src/b.rs", 30, 40),
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn json_report_near_with_groups() {
         let reporter = JsonReporter::new(None);
-        let fp = Fingerprint::from_node(&NormalizedNode::Block(vec![]));
+        let fp = Fingerprint::from_node(&NormalizedNode::with_children(NodeKind::Block, vec![]));
         let group = DuplicateGroup {
             fingerprint: fp,
             members: vec![
@@ -249,7 +249,7 @@ mod tests {
     fn json_is_valid() {
         let reporter = JsonReporter::new(Some(PathBuf::from("/project")));
         let group = DuplicateGroup {
-            fingerprint: Fingerprint::from_node(&NormalizedNode::Opaque),
+            fingerprint: Fingerprint::from_node(&NormalizedNode::leaf(NodeKind::Opaque)),
             members: vec![make_unit("foo", "/project/src/a.rs", 10, 20)],
             similarity: 1.0,
         };
@@ -263,7 +263,7 @@ mod tests {
     #[test]
     fn json_relative_paths() {
         let reporter = JsonReporter::new(Some(PathBuf::from("/home/user/project")));
-        let fp = Fingerprint::from_node(&NormalizedNode::Block(vec![]));
+        let fp = Fingerprint::from_node(&NormalizedNode::with_children(NodeKind::Block, vec![]));
         let group = DuplicateGroup {
             fingerprint: fp,
             members: vec![make_unit("foo", "/home/user/project/src/main.rs", 1, 10)],
