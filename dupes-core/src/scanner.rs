@@ -71,16 +71,9 @@ pub fn scan_files(config: &ScanConfig) -> Vec<PathBuf> {
                         .iter()
                         .any(|e| e.eq_ignore_ascii_case(ext))
                 })
+            && !is_excluded(path, &config.exclude_patterns)
         {
-            // Check exclude patterns
-            let path_str = path.to_string_lossy();
-            let excluded = config
-                .exclude_patterns
-                .iter()
-                .any(|pattern| path_str.contains(pattern.as_str()));
-            if !excluded {
-                files.push(path.to_path_buf());
-            }
+            files.push(path.to_path_buf());
         }
     }
 
