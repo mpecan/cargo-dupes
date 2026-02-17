@@ -3,7 +3,7 @@ pub use dupes_core::node::*;
 
 use syn::punctuated::Punctuated;
 
-// ── Helpers ──────────────────────────────────────────────────────────────
+// -- Helpers ------------------------------------------------------------------
 
 fn member_to_string(member: &syn::Member) -> String {
     match member {
@@ -24,25 +24,25 @@ fn normalize_macro(mac: &syn::Macro, ctx: &mut NormalizationContext) -> Normaliz
     } else {
         match mac.parse_body_with(Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated) {
             Ok(punct) => punct.into_iter().map(|e| normalize_expr(&e, ctx)).collect(),
-            Err(_) => vec![NormalizedNode::Opaque],
+            Err(_) => vec![NormalizedNode::leaf(NodeKind::Opaque)],
         }
     };
-    NormalizedNode::MacroCall { name, args }
+    NormalizedNode::with_children(NodeKind::MacroCall { name }, args)
 }
 
-// ── Normalization functions ──────────────────────────────────────────────
+// -- Normalization functions --------------------------------------------------
 
 pub fn normalize_lit(lit: &syn::Lit) -> NormalizedNode {
     match lit {
-        syn::Lit::Str(_) => NormalizedNode::Literal(LiteralKind::Str),
-        syn::Lit::ByteStr(_) => NormalizedNode::Literal(LiteralKind::ByteStr),
-        syn::Lit::CStr(_) => NormalizedNode::Literal(LiteralKind::CStr),
-        syn::Lit::Byte(_) => NormalizedNode::Literal(LiteralKind::Byte),
-        syn::Lit::Char(_) => NormalizedNode::Literal(LiteralKind::Char),
-        syn::Lit::Int(_) => NormalizedNode::Literal(LiteralKind::Int),
-        syn::Lit::Float(_) => NormalizedNode::Literal(LiteralKind::Float),
-        syn::Lit::Bool(_) => NormalizedNode::Literal(LiteralKind::Bool),
-        _ => NormalizedNode::Opaque,
+        syn::Lit::Str(_) => NormalizedNode::leaf(NodeKind::Literal(LiteralKind::Str)),
+        syn::Lit::ByteStr(_) => NormalizedNode::leaf(NodeKind::Literal(LiteralKind::ByteStr)),
+        syn::Lit::CStr(_) => NormalizedNode::leaf(NodeKind::Literal(LiteralKind::CStr)),
+        syn::Lit::Byte(_) => NormalizedNode::leaf(NodeKind::Literal(LiteralKind::Byte)),
+        syn::Lit::Char(_) => NormalizedNode::leaf(NodeKind::Literal(LiteralKind::Char)),
+        syn::Lit::Int(_) => NormalizedNode::leaf(NodeKind::Literal(LiteralKind::Int)),
+        syn::Lit::Float(_) => NormalizedNode::leaf(NodeKind::Literal(LiteralKind::Float)),
+        syn::Lit::Bool(_) => NormalizedNode::leaf(NodeKind::Literal(LiteralKind::Bool)),
+        _ => NormalizedNode::leaf(NodeKind::Opaque),
     }
 }
 
@@ -96,7 +96,7 @@ pub fn normalize_type(ty: &syn::Type, ctx: &mut NormalizationContext) -> Normali
             if tp.qself.is_none() && tp.path.segments.len() == 1 {
                 let seg = &tp.path.segments[0];
                 let idx = ctx.placeholder(&seg.ident.to_string(), PlaceholderKind::Type);
-                NormalizedNode::TypePlaceholder(PlaceholderKind::Type, idx)
+                NormalizedNode::leaf(NodeKind::TypePlaceholder(PlaceholderKind::Type, idx))
             } else {
                 let segments: Vec<NormalizedNode> = tp
                     .path
@@ -104,29 +104,37 @@ pub fn normalize_type(ty: &syn::Type, ctx: &mut NormalizationContext) -> Normali
                     .iter()
                     .map(|seg| {
                         let idx = ctx.placeholder(&seg.ident.to_string(), PlaceholderKind::Type);
-                        NormalizedNode::TypePlaceholder(PlaceholderKind::Type, idx)
+                        NormalizedNode::leaf(NodeKind::TypePlaceholder(PlaceholderKind::Type, idx))
                     })
                     .collect();
-                NormalizedNode::TypePath(segments)
+                NormalizedNode::with_children(NodeKind::TypePath, segments)
             }
         }
-        syn::Type::Reference(r) => NormalizedNode::TypeReference {
-            mutable: r.mutability.is_some(),
-            elem: Box::new(normalize_type(&r.elem, ctx)),
-        },
+        syn::Type::Reference(r) => NormalizedNode::with_children(
+            NodeKind::TypeReference {
+                mutable: r.mutability.is_some(),
+            },
+            vec![normalize_type(&r.elem, ctx)],
+        ),
         syn::Type::Tuple(t) => {
             if t.elems.is_empty() {
-                NormalizedNode::TypeUnit
+                NormalizedNode::leaf(NodeKind::TypeUnit)
             } else {
-                NormalizedNode::TypeTuple(t.elems.iter().map(|e| normalize_type(e, ctx)).collect())
+                NormalizedNode::with_children(
+                    NodeKind::TypeTuple,
+                    t.elems.iter().map(|e| normalize_type(e, ctx)).collect(),
+                )
             }
         }
-        syn::Type::Slice(s) => NormalizedNode::TypeSlice(Box::new(normalize_type(&s.elem, ctx))),
-        syn::Type::Array(a) => NormalizedNode::TypeArray {
-            elem: Box::new(normalize_type(&a.elem, ctx)),
-            len: Box::new(normalize_expr(&a.len, ctx)),
-        },
-        syn::Type::ImplTrait(i) => NormalizedNode::TypeImplTrait(
+        syn::Type::Slice(s) => {
+            NormalizedNode::with_children(NodeKind::TypeSlice, vec![normalize_type(&s.elem, ctx)])
+        }
+        syn::Type::Array(a) => NormalizedNode::with_children(
+            NodeKind::TypeArray,
+            vec![normalize_type(&a.elem, ctx), normalize_expr(&a.len, ctx)],
+        ),
+        syn::Type::ImplTrait(i) => NormalizedNode::with_children(
+            NodeKind::TypeImplTrait,
             i.bounds
                 .iter()
                 .filter_map(|b| {
@@ -138,13 +146,16 @@ pub fn normalize_type(ty: &syn::Type, ctx: &mut NormalizationContext) -> Normali
                             .map(|seg| {
                                 let idx =
                                     ctx.placeholder(&seg.ident.to_string(), PlaceholderKind::Type);
-                                NormalizedNode::TypePlaceholder(PlaceholderKind::Type, idx)
+                                NormalizedNode::leaf(NodeKind::TypePlaceholder(
+                                    PlaceholderKind::Type,
+                                    idx,
+                                ))
                             })
                             .collect();
                         Some(if segments.len() == 1 {
                             segments.into_iter().next().unwrap()
                         } else {
-                            NormalizedNode::TypePath(segments)
+                            NormalizedNode::with_children(NodeKind::TypePath, segments)
                         })
                     } else {
                         None
@@ -152,11 +163,11 @@ pub fn normalize_type(ty: &syn::Type, ctx: &mut NormalizationContext) -> Normali
                 })
                 .collect(),
         ),
-        syn::Type::Infer(_) => NormalizedNode::TypeInfer,
-        syn::Type::Never(_) => NormalizedNode::TypeNever,
+        syn::Type::Infer(_) => NormalizedNode::leaf(NodeKind::TypeInfer),
+        syn::Type::Never(_) => NormalizedNode::leaf(NodeKind::TypeNever),
         syn::Type::Paren(p) => normalize_type(&p.elem, ctx),
         syn::Type::Macro(tm) => normalize_macro(&tm.mac, ctx),
-        _ => NormalizedNode::Opaque,
+        _ => NormalizedNode::leaf(NodeKind::Opaque),
     }
 }
 
@@ -164,62 +175,82 @@ pub fn normalize_pat(pat: &syn::Pat, ctx: &mut NormalizationContext) -> Normaliz
     match pat {
         syn::Pat::Ident(pi) => {
             let idx = ctx.placeholder(&pi.ident.to_string(), PlaceholderKind::Variable);
-            NormalizedNode::PatPlaceholder(PlaceholderKind::Variable, idx)
+            NormalizedNode::leaf(NodeKind::PatPlaceholder(PlaceholderKind::Variable, idx))
         }
-        syn::Pat::Wild(_) => NormalizedNode::PatWild,
-        syn::Pat::Tuple(pt) => {
-            NormalizedNode::PatTuple(pt.elems.iter().map(|p| normalize_pat(p, ctx)).collect())
-        }
-        syn::Pat::TupleStruct(pts) => {
-            NormalizedNode::PatStruct(pts.elems.iter().map(|p| normalize_pat(p, ctx)).collect())
-        }
-        syn::Pat::Struct(ps) => NormalizedNode::PatStruct(
+        syn::Pat::Wild(_) => NormalizedNode::leaf(NodeKind::PatWild),
+        syn::Pat::Tuple(pt) => NormalizedNode::with_children(
+            NodeKind::PatTuple,
+            pt.elems.iter().map(|p| normalize_pat(p, ctx)).collect(),
+        ),
+        syn::Pat::TupleStruct(pts) => NormalizedNode::with_children(
+            NodeKind::PatStruct,
+            pts.elems.iter().map(|p| normalize_pat(p, ctx)).collect(),
+        ),
+        syn::Pat::Struct(ps) => NormalizedNode::with_children(
+            NodeKind::PatStruct,
             ps.fields
                 .iter()
                 .map(|f| {
                     let value = normalize_pat(&f.pat, ctx);
                     let name_idx =
                         ctx.placeholder(&member_to_string(&f.member), PlaceholderKind::Variable);
-                    NormalizedNode::FieldValue {
-                        name: Box::new(NormalizedNode::PatPlaceholder(
-                            PlaceholderKind::Variable,
-                            name_idx,
-                        )),
-                        value: Box::new(value),
-                    }
+                    NormalizedNode::with_children(
+                        NodeKind::FieldValue,
+                        vec![
+                            NormalizedNode::leaf(NodeKind::PatPlaceholder(
+                                PlaceholderKind::Variable,
+                                name_idx,
+                            )),
+                            value,
+                        ],
+                    )
                 })
                 .collect(),
         ),
-        syn::Pat::Or(po) => {
-            NormalizedNode::PatOr(po.cases.iter().map(|p| normalize_pat(p, ctx)).collect())
+        syn::Pat::Or(po) => NormalizedNode::with_children(
+            NodeKind::PatOr,
+            po.cases.iter().map(|p| normalize_pat(p, ctx)).collect(),
+        ),
+        syn::Pat::Lit(pl) => {
+            NormalizedNode::with_children(NodeKind::PatLiteral, vec![normalize_lit(&pl.lit)])
         }
-        syn::Pat::Lit(pl) => NormalizedNode::PatLiteral(Box::new(normalize_lit(&pl.lit))),
-        syn::Pat::Reference(pr) => NormalizedNode::PatReference {
-            mutable: pr.mutability.is_some(),
-            pat: Box::new(normalize_pat(&pr.pat, ctx)),
-        },
-        syn::Pat::Slice(ps) => {
-            NormalizedNode::PatSlice(ps.elems.iter().map(|p| normalize_pat(p, ctx)).collect())
-        }
-        syn::Pat::Rest(_) => NormalizedNode::PatRest,
-        syn::Pat::Range(pr) => NormalizedNode::PatRange {
-            lo: pr.start.as_ref().map(|e| Box::new(normalize_expr(e, ctx))),
-            hi: pr.end.as_ref().map(|e| Box::new(normalize_expr(e, ctx))),
-        },
+        syn::Pat::Reference(pr) => NormalizedNode::with_children(
+            NodeKind::PatReference {
+                mutable: pr.mutability.is_some(),
+            },
+            vec![normalize_pat(&pr.pat, ctx)],
+        ),
+        syn::Pat::Slice(ps) => NormalizedNode::with_children(
+            NodeKind::PatSlice,
+            ps.elems.iter().map(|p| normalize_pat(p, ctx)).collect(),
+        ),
+        syn::Pat::Rest(_) => NormalizedNode::leaf(NodeKind::PatRest),
+        // PatRange -> [from_or_None, to_or_None]
+        syn::Pat::Range(pr) => NormalizedNode::with_children(
+            NodeKind::PatRange,
+            vec![
+                NormalizedNode::opt(pr.start.as_ref().map(|e| normalize_expr(e, ctx))),
+                NormalizedNode::opt(pr.end.as_ref().map(|e| normalize_expr(e, ctx))),
+            ],
+        ),
         syn::Pat::Path(pp) => {
             if pp.path.segments.len() == 1 {
                 let seg = &pp.path.segments[0];
                 let idx = ctx.placeholder(&seg.ident.to_string(), PlaceholderKind::Variable);
-                NormalizedNode::PatPlaceholder(PlaceholderKind::Variable, idx)
+                NormalizedNode::leaf(NodeKind::PatPlaceholder(PlaceholderKind::Variable, idx))
             } else {
-                NormalizedNode::PatStruct(
+                NormalizedNode::with_children(
+                    NodeKind::PatStruct,
                     pp.path
                         .segments
                         .iter()
                         .map(|seg| {
                             let idx =
                                 ctx.placeholder(&seg.ident.to_string(), PlaceholderKind::Variable);
-                            NormalizedNode::PatPlaceholder(PlaceholderKind::Variable, idx)
+                            NormalizedNode::leaf(NodeKind::PatPlaceholder(
+                                PlaceholderKind::Variable,
+                                idx,
+                            ))
                         })
                         .collect(),
                 )
@@ -227,7 +258,7 @@ pub fn normalize_pat(pat: &syn::Pat, ctx: &mut NormalizationContext) -> Normaliz
         }
         syn::Pat::Type(pt) => normalize_pat(&pt.pat, ctx),
         syn::Pat::Macro(pm) => normalize_macro(&pm.mac, ctx),
-        _ => NormalizedNode::Opaque,
+        _ => NormalizedNode::leaf(NodeKind::Opaque),
     }
 }
 
@@ -238,14 +269,13 @@ pub fn normalize_expr(expr: &syn::Expr, ctx: &mut NormalizationContext) -> Norma
             if ep.path.segments.len() == 1 {
                 let seg = &ep.path.segments[0];
                 let ident = seg.ident.to_string();
-                // Check if it looks like a type/variant (starts with uppercase)
                 let kind = if ident.chars().next().is_some_and(|c| c.is_uppercase()) {
                     PlaceholderKind::Type
                 } else {
                     PlaceholderKind::Variable
                 };
                 let idx = ctx.placeholder(&ident, kind);
-                NormalizedNode::Placeholder(kind, idx)
+                NormalizedNode::leaf(NodeKind::Placeholder(kind, idx))
             } else {
                 let segments: Vec<NormalizedNode> = ep
                     .path
@@ -259,175 +289,260 @@ pub fn normalize_expr(expr: &syn::Expr, ctx: &mut NormalizationContext) -> Norma
                             PlaceholderKind::Variable
                         };
                         let idx = ctx.placeholder(&ident, kind);
-                        NormalizedNode::Placeholder(kind, idx)
+                        NormalizedNode::leaf(NodeKind::Placeholder(kind, idx))
                     })
                     .collect();
-                NormalizedNode::Path(segments)
+                NormalizedNode::with_children(NodeKind::Path, segments)
             }
         }
-        syn::Expr::Binary(eb) => NormalizedNode::BinaryOp {
-            op: normalize_bin_op(&eb.op),
-            left: Box::new(normalize_expr(&eb.left, ctx)),
-            right: Box::new(normalize_expr(&eb.right, ctx)),
-        },
-        syn::Expr::Unary(eu) => NormalizedNode::UnaryOp {
-            op: normalize_un_op(&eu.op),
-            operand: Box::new(normalize_expr(&eu.expr, ctx)),
-        },
-        syn::Expr::Call(ec) => NormalizedNode::Call {
-            func: Box::new(normalize_expr(&ec.func, ctx)),
-            args: ec.args.iter().map(|a| normalize_expr(a, ctx)).collect(),
-        },
-        syn::Expr::MethodCall(emc) => NormalizedNode::MethodCall {
-            receiver: Box::new(normalize_expr(&emc.receiver, ctx)),
-            method: Box::new({
-                let idx = ctx.placeholder(&emc.method.to_string(), PlaceholderKind::Function);
-                NormalizedNode::Placeholder(PlaceholderKind::Function, idx)
-            }),
-            args: emc.args.iter().map(|a| normalize_expr(a, ctx)).collect(),
-        },
-        syn::Expr::Field(ef) => NormalizedNode::FieldAccess {
-            base: Box::new(normalize_expr(&ef.base, ctx)),
-            field: Box::new({
-                let name = match &ef.member {
+        // BinaryOp -> [left, right]
+        syn::Expr::Binary(eb) => NormalizedNode::with_children(
+            NodeKind::BinaryOp(normalize_bin_op(&eb.op)),
+            vec![
+                normalize_expr(&eb.left, ctx),
+                normalize_expr(&eb.right, ctx),
+            ],
+        ),
+        // UnaryOp -> [operand]
+        syn::Expr::Unary(eu) => NormalizedNode::with_children(
+            NodeKind::UnaryOp(normalize_un_op(&eu.op)),
+            vec![normalize_expr(&eu.expr, ctx)],
+        ),
+        // Call -> [func, arg0, arg1, ...]
+        syn::Expr::Call(ec) => {
+            let mut children = vec![normalize_expr(&ec.func, ctx)];
+            children.extend(ec.args.iter().map(|a| normalize_expr(a, ctx)));
+            NormalizedNode::with_children(NodeKind::Call, children)
+        }
+        // MethodCall -> [receiver, method, arg0, ...]
+        syn::Expr::MethodCall(emc) => {
+            let method_idx = ctx.placeholder(&emc.method.to_string(), PlaceholderKind::Function);
+            let mut children = vec![
+                normalize_expr(&emc.receiver, ctx),
+                NormalizedNode::leaf(NodeKind::Placeholder(PlaceholderKind::Function, method_idx)),
+            ];
+            children.extend(emc.args.iter().map(|a| normalize_expr(a, ctx)));
+            NormalizedNode::with_children(NodeKind::MethodCall, children)
+        }
+        // FieldAccess -> [base, field]
+        syn::Expr::Field(ef) => {
+            let name = match &ef.member {
+                syn::Member::Named(ident) => ident.to_string(),
+                syn::Member::Unnamed(idx) => idx.index.to_string(),
+            };
+            let field_idx = ctx.placeholder(&name, PlaceholderKind::Variable);
+            NormalizedNode::with_children(
+                NodeKind::FieldAccess,
+                vec![
+                    normalize_expr(&ef.base, ctx),
+                    NormalizedNode::leaf(NodeKind::Placeholder(
+                        PlaceholderKind::Variable,
+                        field_idx,
+                    )),
+                ],
+            )
+        }
+        // Index -> [base, index]
+        syn::Expr::Index(ei) => NormalizedNode::with_children(
+            NodeKind::Index,
+            vec![
+                normalize_expr(&ei.expr, ctx),
+                normalize_expr(&ei.index, ctx),
+            ],
+        ),
+        // Closure -> [body, param0, param1, ...]
+        syn::Expr::Closure(ec) => {
+            let mut children = vec![normalize_expr(&ec.body, ctx)];
+            children.extend(ec.inputs.iter().map(|p| normalize_pat(p, ctx)));
+            NormalizedNode::with_children(NodeKind::Closure, children)
+        }
+        // Return -> [] or [value]
+        syn::Expr::Return(er) => {
+            let children: Vec<_> = er
+                .expr
+                .as_ref()
+                .map(|e| vec![normalize_expr(e, ctx)])
+                .unwrap_or_default();
+            NormalizedNode::with_children(NodeKind::Return, children)
+        }
+        // Break -> [] or [value]
+        syn::Expr::Break(eb) => {
+            let children: Vec<_> = eb
+                .expr
+                .as_ref()
+                .map(|e| vec![normalize_expr(e, ctx)])
+                .unwrap_or_default();
+            NormalizedNode::with_children(NodeKind::Break, children)
+        }
+        syn::Expr::Continue(_) => NormalizedNode::leaf(NodeKind::Continue),
+        // Assign -> [left, right]
+        syn::Expr::Assign(ea) => NormalizedNode::with_children(
+            NodeKind::Assign,
+            vec![
+                normalize_expr(&ea.left, ctx),
+                normalize_expr(&ea.right, ctx),
+            ],
+        ),
+        // Reference -> [expr]
+        syn::Expr::Reference(er) => NormalizedNode::with_children(
+            NodeKind::Reference {
+                mutable: er.mutability.is_some(),
+            },
+            vec![normalize_expr(&er.expr, ctx)],
+        ),
+        syn::Expr::Tuple(et) => NormalizedNode::with_children(
+            NodeKind::Tuple,
+            et.elems.iter().map(|e| normalize_expr(e, ctx)).collect(),
+        ),
+        syn::Expr::Array(ea) => NormalizedNode::with_children(
+            NodeKind::Array,
+            ea.elems.iter().map(|e| normalize_expr(e, ctx)).collect(),
+        ),
+        // Repeat -> [elem, len]
+        syn::Expr::Repeat(er) => NormalizedNode::with_children(
+            NodeKind::Repeat,
+            vec![normalize_expr(&er.expr, ctx), normalize_expr(&er.len, ctx)],
+        ),
+        // Cast -> [expr, ty]
+        syn::Expr::Cast(ec) => NormalizedNode::with_children(
+            NodeKind::Cast,
+            vec![normalize_expr(&ec.expr, ctx), normalize_type(&ec.ty, ctx)],
+        ),
+        // StructInit -> [rest_or_None, field0, field1, ...]
+        syn::Expr::Struct(es) => {
+            let mut children = vec![NormalizedNode::opt(
+                es.rest.as_ref().map(|e| normalize_expr(e, ctx)),
+            )];
+            children.extend(es.fields.iter().map(|f| {
+                let name = match &f.member {
                     syn::Member::Named(ident) => ident.to_string(),
                     syn::Member::Unnamed(idx) => idx.index.to_string(),
                 };
-                let idx = ctx.placeholder(&name, PlaceholderKind::Variable);
-                NormalizedNode::Placeholder(PlaceholderKind::Variable, idx)
-            }),
-        },
-        syn::Expr::Index(ei) => NormalizedNode::Index {
-            base: Box::new(normalize_expr(&ei.expr, ctx)),
-            index: Box::new(normalize_expr(&ei.index, ctx)),
-        },
-        syn::Expr::Closure(ec) => NormalizedNode::Closure {
-            params: ec.inputs.iter().map(|p| normalize_pat(p, ctx)).collect(),
-            body: Box::new(normalize_expr(&ec.body, ctx)),
-        },
-        syn::Expr::Return(er) => {
-            NormalizedNode::Return(er.expr.as_ref().map(|e| Box::new(normalize_expr(e, ctx))))
+                let field_idx = ctx.placeholder(&name, PlaceholderKind::Variable);
+                NormalizedNode::with_children(
+                    NodeKind::FieldValue,
+                    vec![
+                        NormalizedNode::leaf(NodeKind::Placeholder(
+                            PlaceholderKind::Variable,
+                            field_idx,
+                        )),
+                        normalize_expr(&f.expr, ctx),
+                    ],
+                )
+            }));
+            NormalizedNode::with_children(NodeKind::StructInit, children)
         }
-        syn::Expr::Break(eb) => {
-            NormalizedNode::Break(eb.expr.as_ref().map(|e| Box::new(normalize_expr(e, ctx))))
+        // Await -> [expr]
+        syn::Expr::Await(ea) => {
+            NormalizedNode::with_children(NodeKind::Await, vec![normalize_expr(&ea.base, ctx)])
         }
-        syn::Expr::Continue(_) => NormalizedNode::Continue,
-        syn::Expr::Assign(ea) => NormalizedNode::Assign {
-            left: Box::new(normalize_expr(&ea.left, ctx)),
-            right: Box::new(normalize_expr(&ea.right, ctx)),
-        },
-        syn::Expr::Reference(er) => NormalizedNode::Reference {
-            mutable: er.mutability.is_some(),
-            expr: Box::new(normalize_expr(&er.expr, ctx)),
-        },
-        syn::Expr::Tuple(et) => {
-            NormalizedNode::Tuple(et.elems.iter().map(|e| normalize_expr(e, ctx)).collect())
+        // Try -> [expr]
+        syn::Expr::Try(et) => {
+            NormalizedNode::with_children(NodeKind::Try, vec![normalize_expr(&et.expr, ctx)])
         }
-        syn::Expr::Array(ea) => {
-            NormalizedNode::Array(ea.elems.iter().map(|e| normalize_expr(e, ctx)).collect())
+        // If -> [condition, then_branch, else_or_None]
+        syn::Expr::If(ei) => NormalizedNode::with_children(
+            NodeKind::If,
+            vec![
+                normalize_expr(&ei.cond, ctx),
+                normalize_block(&ei.then_branch, ctx),
+                NormalizedNode::opt(ei.else_branch.as_ref().map(|(_, e)| normalize_expr(e, ctx))),
+            ],
+        ),
+        // Match -> [expr, arm0, arm1, ...]
+        // Each arm is MatchArm -> [pattern, guard_or_None, body]
+        syn::Expr::Match(em) => {
+            let mut children = vec![normalize_expr(&em.expr, ctx)];
+            children.extend(em.arms.iter().map(|arm| {
+                NormalizedNode::with_children(
+                    NodeKind::MatchArm,
+                    vec![
+                        normalize_pat(&arm.pat, ctx),
+                        NormalizedNode::opt(
+                            arm.guard.as_ref().map(|(_, g)| normalize_expr(g, ctx)),
+                        ),
+                        normalize_expr(&arm.body, ctx),
+                    ],
+                )
+            }));
+            NormalizedNode::with_children(NodeKind::Match, children)
         }
-        syn::Expr::Repeat(er) => NormalizedNode::Repeat {
-            elem: Box::new(normalize_expr(&er.expr, ctx)),
-            len: Box::new(normalize_expr(&er.len, ctx)),
-        },
-        syn::Expr::Cast(ec) => NormalizedNode::Cast {
-            expr: Box::new(normalize_expr(&ec.expr, ctx)),
-            ty: Box::new(normalize_type(&ec.ty, ctx)),
-        },
-        syn::Expr::Struct(es) => NormalizedNode::StructInit {
-            fields: es
-                .fields
-                .iter()
-                .map(|f| NormalizedNode::FieldValue {
-                    name: Box::new({
-                        let name = match &f.member {
-                            syn::Member::Named(ident) => ident.to_string(),
-                            syn::Member::Unnamed(idx) => idx.index.to_string(),
-                        };
-                        let idx = ctx.placeholder(&name, PlaceholderKind::Variable);
-                        NormalizedNode::Placeholder(PlaceholderKind::Variable, idx)
-                    }),
-                    value: Box::new(normalize_expr(&f.expr, ctx)),
-                })
-                .collect(),
-            rest: es.rest.as_ref().map(|e| Box::new(normalize_expr(e, ctx))),
-        },
-        syn::Expr::Await(ea) => NormalizedNode::Await(Box::new(normalize_expr(&ea.base, ctx))),
-        syn::Expr::Try(et) => NormalizedNode::Try(Box::new(normalize_expr(&et.expr, ctx))),
-        syn::Expr::If(ei) => NormalizedNode::If {
-            condition: Box::new(normalize_expr(&ei.cond, ctx)),
-            then_branch: Box::new(normalize_block(&ei.then_branch, ctx)),
-            else_branch: ei
-                .else_branch
-                .as_ref()
-                .map(|(_, e)| Box::new(normalize_expr(e, ctx))),
-        },
-        syn::Expr::Match(em) => NormalizedNode::Match {
-            expr: Box::new(normalize_expr(&em.expr, ctx)),
-            arms: em
-                .arms
-                .iter()
-                .map(|arm| MatchArm {
-                    pattern: normalize_pat(&arm.pat, ctx),
-                    guard: arm
-                        .guard
-                        .as_ref()
-                        .map(|(_, g)| Box::new(normalize_expr(g, ctx))),
-                    body: Box::new(normalize_expr(&arm.body, ctx)),
-                })
-                .collect(),
-        },
-        syn::Expr::Loop(el) => NormalizedNode::Loop(Box::new(normalize_block(&el.body, ctx))),
-        syn::Expr::While(ew) => NormalizedNode::While {
-            condition: Box::new(normalize_expr(&ew.cond, ctx)),
-            body: Box::new(normalize_block(&ew.body, ctx)),
-        },
-        syn::Expr::ForLoop(ef) => NormalizedNode::ForLoop {
-            pat: Box::new(normalize_pat(&ef.pat, ctx)),
-            iter: Box::new(normalize_expr(&ef.expr, ctx)),
-            body: Box::new(normalize_block(&ef.body, ctx)),
-        },
+        // Loop -> [body]
+        syn::Expr::Loop(el) => {
+            NormalizedNode::with_children(NodeKind::Loop, vec![normalize_block(&el.body, ctx)])
+        }
+        // While -> [condition, body]
+        syn::Expr::While(ew) => NormalizedNode::with_children(
+            NodeKind::While,
+            vec![
+                normalize_expr(&ew.cond, ctx),
+                normalize_block(&ew.body, ctx),
+            ],
+        ),
+        // ForLoop -> [pat, iter, body]
+        syn::Expr::ForLoop(ef) => NormalizedNode::with_children(
+            NodeKind::ForLoop,
+            vec![
+                normalize_pat(&ef.pat, ctx),
+                normalize_expr(&ef.expr, ctx),
+                normalize_block(&ef.body, ctx),
+            ],
+        ),
         syn::Expr::Block(eb) => normalize_block(&eb.block, ctx),
-        syn::Expr::Paren(ep) => NormalizedNode::Paren(Box::new(normalize_expr(&ep.expr, ctx))),
-        syn::Expr::Range(er) => NormalizedNode::Range {
-            from: er.start.as_ref().map(|e| Box::new(normalize_expr(e, ctx))),
-            to: er.end.as_ref().map(|e| Box::new(normalize_expr(e, ctx))),
-        },
-        syn::Expr::Let(el) => NormalizedNode::LetExpr {
-            pat: Box::new(normalize_pat(&el.pat, ctx)),
-            expr: Box::new(normalize_expr(&el.expr, ctx)),
-        },
+        // Paren -> [expr]
+        syn::Expr::Paren(ep) => {
+            NormalizedNode::with_children(NodeKind::Paren, vec![normalize_expr(&ep.expr, ctx)])
+        }
+        // Range -> [from_or_None, to_or_None]
+        syn::Expr::Range(er) => NormalizedNode::with_children(
+            NodeKind::Range,
+            vec![
+                NormalizedNode::opt(er.start.as_ref().map(|e| normalize_expr(e, ctx))),
+                NormalizedNode::opt(er.end.as_ref().map(|e| normalize_expr(e, ctx))),
+            ],
+        ),
+        // LetExpr -> [pat, expr]
+        syn::Expr::Let(el) => NormalizedNode::with_children(
+            NodeKind::LetExpr,
+            vec![normalize_pat(&el.pat, ctx), normalize_expr(&el.expr, ctx)],
+        ),
         syn::Expr::Macro(em) => normalize_macro(&em.mac, ctx),
         syn::Expr::Group(eg) => normalize_expr(&eg.expr, ctx),
         syn::Expr::Unsafe(eu) => normalize_block(&eu.block, ctx),
         syn::Expr::Const(ec) => normalize_block(&ec.block, ctx),
-        _ => NormalizedNode::Opaque,
+        _ => NormalizedNode::leaf(NodeKind::Opaque),
     }
 }
 
 pub fn normalize_stmt(stmt: &syn::Stmt, ctx: &mut NormalizationContext) -> NormalizedNode {
     match stmt {
-        syn::Stmt::Local(local) => NormalizedNode::LetBinding {
-            pattern: Box::new(normalize_pat(&local.pat, ctx)),
-            ty: None, // type annotations on let bindings are part of the pattern in syn
-            init: local
-                .init
-                .as_ref()
-                .map(|init| Box::new(normalize_expr(&init.expr, ctx))),
-        },
+        // LetBinding -> [pattern, type_or_None, init_or_None]
+        syn::Stmt::Local(local) => NormalizedNode::with_children(
+            NodeKind::LetBinding,
+            vec![
+                normalize_pat(&local.pat, ctx),
+                NormalizedNode::none(), // type annotations on let bindings are part of the pattern in syn
+                NormalizedNode::opt(
+                    local
+                        .init
+                        .as_ref()
+                        .map(|init| normalize_expr(&init.expr, ctx)),
+                ),
+            ],
+        ),
         syn::Stmt::Expr(expr, semi) => {
             let normalized = normalize_expr(expr, ctx);
             if semi.is_some() {
-                NormalizedNode::Semi(Box::new(normalized))
+                NormalizedNode::with_children(NodeKind::Semi, vec![normalized])
             } else {
                 normalized
             }
         }
-        syn::Stmt::Item(_) => NormalizedNode::Opaque,
+        syn::Stmt::Item(_) => NormalizedNode::leaf(NodeKind::Opaque),
         syn::Stmt::Macro(sm) => {
             let normalized = normalize_macro(&sm.mac, ctx);
             if sm.semi_token.is_some() {
-                NormalizedNode::Semi(Box::new(normalized))
+                NormalizedNode::with_children(NodeKind::Semi, vec![normalized])
             } else {
                 normalized
             }
@@ -436,47 +551,45 @@ pub fn normalize_stmt(stmt: &syn::Stmt, ctx: &mut NormalizationContext) -> Norma
 }
 
 pub fn normalize_block(block: &syn::Block, ctx: &mut NormalizationContext) -> NormalizedNode {
-    NormalizedNode::Block(block.stmts.iter().map(|s| normalize_stmt(s, ctx)).collect())
+    NormalizedNode::with_children(
+        NodeKind::Block,
+        block.stmts.iter().map(|s| normalize_stmt(s, ctx)).collect(),
+    )
 }
 
 pub fn normalize_signature(sig: &syn::Signature, ctx: &mut NormalizationContext) -> NormalizedNode {
-    let params = sig
-        .inputs
-        .iter()
-        .map(|arg| match arg {
-            syn::FnArg::Receiver(r) => {
-                let idx = ctx.placeholder("self", PlaceholderKind::Variable);
-                let self_node = NormalizedNode::Placeholder(PlaceholderKind::Variable, idx);
-                if r.reference.is_some() {
-                    NormalizedNode::Reference {
-                        mutable: r.mutability.is_some(),
-                        expr: Box::new(self_node),
-                    }
-                } else {
-                    self_node
-                }
-            }
-            syn::FnArg::Typed(pt) => {
-                let pat = normalize_pat(&pt.pat, ctx);
-                let ty = normalize_type(&pt.ty, ctx);
-                NormalizedNode::FieldValue {
-                    name: Box::new(pat),
-                    value: Box::new(ty),
-                }
-            }
-        })
-        .collect();
+    // FnSignature -> [return_type_or_None, param0, param1, ...]
     let return_type = match &sig.output {
-        syn::ReturnType::Default => None,
-        syn::ReturnType::Type(_, ty) => Some(Box::new(normalize_type(ty, ctx))),
+        syn::ReturnType::Default => NormalizedNode::none(),
+        syn::ReturnType::Type(_, ty) => normalize_type(ty, ctx),
     };
-    NormalizedNode::FnSignature {
-        params,
-        return_type,
-    }
+    let mut children = vec![return_type];
+    children.extend(sig.inputs.iter().map(|arg| match arg {
+        syn::FnArg::Receiver(r) => {
+            let idx = ctx.placeholder("self", PlaceholderKind::Variable);
+            let self_node =
+                NormalizedNode::leaf(NodeKind::Placeholder(PlaceholderKind::Variable, idx));
+            if r.reference.is_some() {
+                NormalizedNode::with_children(
+                    NodeKind::Reference {
+                        mutable: r.mutability.is_some(),
+                    },
+                    vec![self_node],
+                )
+            } else {
+                self_node
+            }
+        }
+        syn::FnArg::Typed(pt) => {
+            let pat = normalize_pat(&pt.pat, ctx);
+            let ty = normalize_type(&pt.ty, ctx);
+            NormalizedNode::with_children(NodeKind::FieldValue, vec![pat, ty])
+        }
+    }));
+    NormalizedNode::with_children(NodeKind::FnSignature, children)
 }
 
-// ── Public entry points ──────────────────────────────────────────────────
+// -- Public entry points ------------------------------------------------------
 
 /// Normalize a top-level function.
 pub fn normalize_item_fn(func: &syn::ItemFn) -> (NormalizedNode, NormalizedNode) {
@@ -500,7 +613,7 @@ pub fn normalize_closure_expr(closure: &syn::ExprClosure) -> NormalizedNode {
     normalize_expr(&syn::Expr::Closure(closure.clone()), &mut ctx)
 }
 
-/// Normalize an impl block — normalizes each method body.
+/// Normalize an impl block -- normalizes each method body.
 pub fn normalize_impl_block(imp: &syn::ItemImpl) -> Vec<(String, NormalizedNode, NormalizedNode)> {
     imp.items
         .iter()
@@ -575,13 +688,8 @@ mod tests {
 
     #[test]
     fn bool_literals_normalize_as_placeholders() {
-        // syn parses `true` and `false` as path expressions, not as Lit::Bool.
-        // They normalize to Placeholder(Variable, 0) since they are single-segment paths
-        // with lowercase names. This means `true` and `false` are indistinguishable from
-        // any variable name in the normalized form — a known limitation.
         let n1 = normalize_code_expr("true");
         let n2 = normalize_code_expr("false");
-        // Both normalize to the same placeholder shape (Variable, 0)
         assert_eq!(n1, n2);
     }
 
@@ -623,12 +731,10 @@ mod tests {
     fn match_arms_normalized() {
         let code = r#"match x { 0 => "zero", _ => "other" }"#;
         let n = normalize_code_expr(code);
-        match n {
-            NormalizedNode::Match { arms, .. } => {
-                assert_eq!(arms.len(), 2);
-            }
-            _ => panic!("Expected Match node"),
-        }
+        // Match -> [expr, arm0, arm1]
+        assert_eq!(n.kind, NodeKind::Match);
+        // children[0] is expr, children[1..] are arms
+        assert_eq!(n.children.len(), 3); // expr + 2 arms
     }
 
     #[test]
@@ -646,7 +752,6 @@ mod tests {
         let code2 = "for j in 0..10 { println!(\"world\") }";
         let n1 = normalize_code_expr(code1);
         let n2 = normalize_code_expr(code2);
-        // Same macro name with erased literal values, so loop bodies match
         assert_eq!(n1, n2);
     }
 
@@ -697,49 +802,35 @@ mod tests {
     #[test]
     fn cast_expression_normalized() {
         let n = normalize_code_expr("x as f64");
-        match n {
-            NormalizedNode::Cast { .. } => {}
-            _ => panic!("Expected Cast node"),
-        }
+        assert_eq!(n.kind, NodeKind::Cast);
     }
 
     #[test]
     fn index_expression_normalized() {
         let n = normalize_code_expr("arr[0]");
-        match n {
-            NormalizedNode::Index { .. } => {}
-            _ => panic!("Expected Index node"),
-        }
+        assert_eq!(n.kind, NodeKind::Index);
     }
 
     #[test]
     fn await_expression_normalized() {
         let n = normalize_code_expr("fut.await");
-        match n {
-            NormalizedNode::Await(_) => {}
-            _ => panic!("Expected Await node"),
-        }
+        assert_eq!(n.kind, NodeKind::Await);
     }
 
     #[test]
     fn try_expression_normalized() {
         let n = normalize_code_expr("result?");
-        match n {
-            NormalizedNode::Try(_) => {}
-            _ => panic!("Expected Try node"),
-        }
+        assert_eq!(n.kind, NodeKind::Try);
     }
 
     #[test]
     fn range_expression_normalized() {
         let n = normalize_code_expr("0..10");
-        match n {
-            NormalizedNode::Range {
-                from: Some(_),
-                to: Some(_),
-            } => {}
-            _ => panic!("Expected Range node with from and to"),
-        }
+        // Range -> [from_or_None, to_or_None]
+        assert_eq!(n.kind, NodeKind::Range);
+        assert_eq!(n.children.len(), 2);
+        assert!(!n.children[0].is_none());
+        assert!(!n.children[1].is_none());
     }
 
     #[test]
@@ -777,11 +868,14 @@ mod tests {
     #[test]
     fn macro_invocations_produce_macro_call() {
         let n = normalize_code_expr("println!(\"hello\")");
-        match &n {
-            NormalizedNode::MacroCall { name, args } => {
+        match &n.kind {
+            NodeKind::MacroCall { name } => {
                 assert_eq!(name, "println");
-                assert_eq!(args.len(), 1);
-                assert_eq!(args[0], NormalizedNode::Literal(LiteralKind::Str));
+                assert_eq!(n.children.len(), 1);
+                assert_eq!(
+                    n.children[0],
+                    NormalizedNode::leaf(NodeKind::Literal(LiteralKind::Str))
+                );
             }
             _ => panic!("Expected MacroCall node, got {:?}", n),
         }
@@ -811,10 +905,10 @@ mod tests {
     #[test]
     fn vec_macro_normalized() {
         let n = normalize_code_expr("vec![1, 2, 3]");
-        match &n {
-            NormalizedNode::MacroCall { name, args } => {
+        match &n.kind {
+            NodeKind::MacroCall { name } => {
                 assert_eq!(name, "vec");
-                assert_eq!(args.len(), 3);
+                assert_eq!(n.children.len(), 3);
             }
             _ => panic!("Expected MacroCall node, got {:?}", n),
         }
@@ -823,8 +917,8 @@ mod tests {
     #[test]
     fn multi_segment_macro_path_uses_last_segment() {
         let n = normalize_code_expr("std::println!(\"hello\")");
-        match &n {
-            NormalizedNode::MacroCall { name, .. } => {
+        match &n.kind {
+            NodeKind::MacroCall { name } => {
                 assert_eq!(name, "println");
             }
             _ => panic!("Expected MacroCall node, got {:?}", n),
@@ -840,13 +934,12 @@ mod tests {
 
     #[test]
     fn unparseable_macro_args_produce_opaque() {
-        // vec![x; n] uses semicolon syntax, which can't be parsed as comma-separated exprs
         let n = normalize_code_expr("vec![x; 10]");
-        match &n {
-            NormalizedNode::MacroCall { name, args } => {
+        match &n.kind {
+            NodeKind::MacroCall { name } => {
                 assert_eq!(name, "vec");
-                assert_eq!(args.len(), 1);
-                assert_eq!(args[0], NormalizedNode::Opaque);
+                assert_eq!(n.children.len(), 1);
+                assert_eq!(n.children[0], NormalizedNode::leaf(NodeKind::Opaque));
             }
             _ => panic!("Expected MacroCall node, got {:?}", n),
         }
@@ -856,19 +949,14 @@ mod tests {
     fn unparseable_macro_differs_from_no_args() {
         let n_empty = normalize_code_expr("my_macro!()");
         let n_unparseable = normalize_code_expr("vec![x; 10]");
-        match (&n_empty, &n_unparseable) {
-            (
-                NormalizedNode::MacroCall {
-                    args: args_empty, ..
-                },
-                NormalizedNode::MacroCall {
-                    args: args_unparseable,
-                    ..
-                },
-            ) => {
-                assert!(args_empty.is_empty());
-                assert_eq!(args_unparseable.len(), 1);
-                assert_eq!(args_unparseable[0], NormalizedNode::Opaque);
+        match (&n_empty.kind, &n_unparseable.kind) {
+            (NodeKind::MacroCall { .. }, NodeKind::MacroCall { .. }) => {
+                assert!(n_empty.children.is_empty());
+                assert_eq!(n_unparseable.children.len(), 1);
+                assert_eq!(
+                    n_unparseable.children[0],
+                    NormalizedNode::leaf(NodeKind::Opaque)
+                );
             }
             _ => panic!("Expected MacroCall nodes"),
         }
@@ -876,20 +964,15 @@ mod tests {
 
     #[test]
     fn type_position_macro_normalized() {
-        // Type::Macro is rare but exists — we need to parse it via a function signature
         let code = "fn foo() -> my_type!(i32) {}";
-        // syn may not parse this as Type::Macro in all cases; verify it at least doesn't panic
         if let Ok(f) = syn::parse_str::<syn::ItemFn>(code) {
             let (sig, _) = normalize_item_fn(&f);
-            // Just verify it produces something (doesn't panic)
             assert!(count_nodes(&sig) > 0);
         }
     }
 
     #[test]
     fn pat_macro_normalized() {
-        // Pat::Macro appears as a macro in pattern position, e.g. in a match arm
-        // This is quite rare, but verify it at least normalizes correctly
         let code = "fn foo(x: i32) { match x { my_pat!(x) => {} _ => {} } }";
         if let Ok(f) = syn::parse_str::<syn::ItemFn>(code) {
             let (_, body) = normalize_item_fn(&f);
@@ -916,10 +999,7 @@ mod tests {
     #[test]
     fn assign_expression_normalized() {
         let n = normalize_code_expr("x = 5");
-        match n {
-            NormalizedNode::Assign { .. } => {}
-            _ => panic!("Expected Assign node"),
-        }
+        assert_eq!(n.kind, NodeKind::Assign);
     }
 
     #[test]
@@ -928,44 +1008,31 @@ mod tests {
         let code2 = "Bar { a: 1, b: 2 }";
         let n1 = normalize_code_expr(code1);
         let n2 = normalize_code_expr(code2);
-        // Struct names differ, so paths differ, but field structure is the same
-        // Both have StructInit with 2 fields
-        match (&n1, &n2) {
-            (
-                NormalizedNode::StructInit { fields: f1, .. },
-                NormalizedNode::StructInit { fields: f2, .. },
-            ) => {
-                assert_eq!(f1.len(), f2.len());
-            }
-            _ => panic!("Expected StructInit nodes"),
-        }
+        // Both have StructInit; children[0] is rest_or_None, rest are fields
+        assert_eq!(n1.kind, NodeKind::StructInit);
+        assert_eq!(n2.kind, NodeKind::StructInit);
+        // Same number of fields
+        assert_eq!(n1.children.len(), n2.children.len());
     }
 
     #[test]
     fn array_expression_normalized() {
         let n = normalize_code_expr("[1, 2, 3]");
-        match n {
-            NormalizedNode::Array(elems) => assert_eq!(elems.len(), 3),
-            _ => panic!("Expected Array node"),
-        }
+        assert_eq!(n.kind, NodeKind::Array);
+        assert_eq!(n.children.len(), 3);
     }
 
     #[test]
     fn tuple_expression_normalized() {
         let n = normalize_code_expr("(1, 2, 3)");
-        match n {
-            NormalizedNode::Tuple(elems) => assert_eq!(elems.len(), 3),
-            _ => panic!("Expected Tuple node"),
-        }
+        assert_eq!(n.kind, NodeKind::Tuple);
+        assert_eq!(n.children.len(), 3);
     }
 
     #[test]
     fn field_access_normalized() {
         let n = normalize_code_expr("foo.bar");
-        match n {
-            NormalizedNode::FieldAccess { .. } => {}
-            _ => panic!("Expected FieldAccess node"),
-        }
+        assert_eq!(n.kind, NodeKind::FieldAccess);
     }
 
     #[test]
@@ -979,10 +1046,7 @@ mod tests {
     fn loop_normalized() {
         let code = "loop { break; }";
         let n = normalize_code_expr(code);
-        match n {
-            NormalizedNode::Loop(_) => {}
-            _ => panic!("Expected Loop node"),
-        }
+        assert_eq!(n.kind, NodeKind::Loop);
     }
 
     #[test]
@@ -990,48 +1054,37 @@ mod tests {
         let code = "fn foo() {}";
         let f = parse_fn(code);
         let (_, body) = normalize_item_fn(&f);
-        match body {
-            NormalizedNode::Block(stmts) => assert!(stmts.is_empty()),
-            _ => panic!("Expected empty Block"),
-        }
+        assert_eq!(body.kind, NodeKind::Block);
+        assert!(body.children.is_empty());
     }
-
-    // NOTE: reindex_remaps_from_zero, reindex_preserves_same_placeholder_identity,
-    // reindex_makes_equivalent_subtrees_equal, and reindex_handles_multiple_placeholder_kinds
-    // are tested in dupes-core/src/node.rs tests (no syn dependency needed).
 
     #[test]
     fn reindex_from_real_function_subtrees() {
-        // In fn1, if-then uses x (idx 0) and y (idx 1) — then introduces z (idx 2)
         let f1 =
             parse_fn("fn foo(x: i32, y: i32) -> i32 { if x > 0 { let z = y + 1; z } else { x } }");
-        // In fn2, if-then uses a (idx 0) then introduces c (idx 2), uses b (idx 1) — same structure
-        // But here the then_branch references a(0) and b(1) differently
         let f2 = parse_fn(
             "fn bar(unused: i32, a: i32, b: i32) -> i32 { if a > 0 { let c = b + 1; c } else { a } }",
         );
         let (_, body1) = normalize_item_fn(&f1);
         let (_, body2) = normalize_item_fn(&f2);
 
-        // Extract the then_branch from each
-        let then1 = match &body1 {
-            NormalizedNode::Block(stmts) => match &stmts[0] {
-                NormalizedNode::If { then_branch, .. } => then_branch.as_ref().clone(),
+        // Extract the then_branch from each: Block -> stmts[0] -> If -> children[1]
+        let then1 = match &body1.kind {
+            NodeKind::Block => match &body1.children[0].kind {
+                NodeKind::If => body1.children[0].children[1].clone(),
                 _ => panic!("expected If"),
             },
             _ => panic!("expected Block"),
         };
-        let then2 = match &body2 {
-            NormalizedNode::Block(stmts) => match &stmts[0] {
-                NormalizedNode::If { then_branch, .. } => then_branch.as_ref().clone(),
+        let then2 = match &body2.kind {
+            NodeKind::Block => match &body2.children[0].kind {
+                NodeKind::If => body2.children[0].children[1].clone(),
                 _ => panic!("expected If"),
             },
             _ => panic!("expected Block"),
         };
 
-        // Before re-indexing, they have different placeholder indices due to different parent contexts
         assert_ne!(then1, then2);
-        // After re-indexing, they should be equal (both: let $0 = $1 + 1; $0)
         assert_eq!(reindex_placeholders(&then1), reindex_placeholders(&then2));
     }
 }

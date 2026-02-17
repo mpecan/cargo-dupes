@@ -135,11 +135,11 @@ pub fn remove_stale_entries(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::{LiteralKind, NormalizedNode};
+    use crate::node::{LiteralKind, NodeKind, NormalizedNode};
     use tempfile::TempDir;
 
     fn test_fingerprint() -> Fingerprint {
-        Fingerprint::from_node(&NormalizedNode::Literal(LiteralKind::Int))
+        Fingerprint::from_node(&NormalizedNode::leaf(NodeKind::Literal(LiteralKind::Int)))
     }
 
     #[test]
@@ -214,7 +214,7 @@ mod tests {
                 similarity: 1.0,
             },
             DuplicateGroup {
-                fingerprint: Fingerprint::from_node(&NormalizedNode::Opaque),
+                fingerprint: Fingerprint::from_node(&NormalizedNode::leaf(NodeKind::Opaque)),
                 members: vec![],
                 similarity: 1.0,
             },
@@ -243,7 +243,8 @@ mod tests {
     #[test]
     fn filter_ignored_keeps_near_duplicates_without_matching_entry() {
         let fp = test_fingerprint();
-        let other_fp = Fingerprint::from_node(&NormalizedNode::Block(vec![]));
+        let other_fp =
+            Fingerprint::from_node(&NormalizedNode::with_children(NodeKind::Block, vec![]));
         let mut ignore = IgnoreFile::default();
         add_ignore(&mut ignore, &other_fp, None, vec![]);
 
@@ -260,7 +261,8 @@ mod tests {
     #[test]
     fn find_stale_entries_identifies_stale_vs_live() {
         let live_fp = test_fingerprint();
-        let stale_fp = Fingerprint::from_node(&NormalizedNode::Block(vec![]));
+        let stale_fp =
+            Fingerprint::from_node(&NormalizedNode::with_children(NodeKind::Block, vec![]));
 
         let mut ignore = IgnoreFile::default();
         add_ignore(&mut ignore, &live_fp, Some("live".to_string()), vec![]);
@@ -277,7 +279,8 @@ mod tests {
     #[test]
     fn remove_stale_entries_removes_only_stale() {
         let live_fp = test_fingerprint();
-        let stale_fp = Fingerprint::from_node(&NormalizedNode::Block(vec![]));
+        let stale_fp =
+            Fingerprint::from_node(&NormalizedNode::with_children(NodeKind::Block, vec![]));
 
         let mut ignore = IgnoreFile::default();
         add_ignore(&mut ignore, &live_fp, Some("live".to_string()), vec![]);

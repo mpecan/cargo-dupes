@@ -60,7 +60,7 @@ pub fn analyze(
                     file: unit.file.clone(),
                     line_start: unit.line_start,
                     line_end: unit.line_end,
-                    signature: node::NormalizedNode::Opaque,
+                    signature: node::NormalizedNode::leaf(node::NodeKind::Opaque),
                     body: su.node.clone(),
                     fingerprint: fingerprint::Fingerprint::from_node(&su.node),
                     node_count: su.node_count,

@@ -189,7 +189,7 @@ impl<'ast> Visit<'ast> for CodeUnitExtractor {
                 file: self.file.clone(),
                 line_start,
                 line_end,
-                signature: NormalizedNode::Opaque,
+                signature: NormalizedNode::leaf(dupes_core::node::NodeKind::Opaque),
                 body: normalized,
                 fingerprint,
                 node_count,

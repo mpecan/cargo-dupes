@@ -5,7 +5,7 @@
 use std::fs;
 
 use dupes_core::fingerprint::Fingerprint;
-use dupes_core::node::NormalizedNode;
+use dupes_core::node::{NodeKind, NormalizedNode};
 use dupes_core::similarity::similarity_score;
 use tempfile::TempDir;
 
@@ -421,8 +421,9 @@ fn stats_with_near_duplicates() {
         fn b(y: i32) -> i32 { y * 2 }
         "#,
     );
-    let composite_fp =
-        Fingerprint::from_fingerprints(&[Fingerprint::from_node(&NormalizedNode::Opaque)]);
+    let composite_fp = Fingerprint::from_fingerprints(&[Fingerprint::from_node(
+        &NormalizedNode::leaf(NodeKind::Opaque),
+    )]);
     let near_group = dupes_core::grouper::DuplicateGroup {
         fingerprint: composite_fp,
         members: vec![],
