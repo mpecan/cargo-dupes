@@ -1,6 +1,6 @@
 //! Tests for dupes-core modules that require syn for test data construction.
 //! These tests exercise fingerprint, similarity, grouper, and extractor functionality
-//! using syn-parsed Rust code, so they live in cargo-dupes (which depends on syn).
+//! using syn-parsed Rust code, so they live in dupes-rust (which depends on syn).
 
 use std::fs;
 
@@ -9,10 +9,10 @@ use dupes_core::node::{NodeKind, NormalizedNode};
 use dupes_core::similarity::similarity_score;
 use tempfile::TempDir;
 
-use cargo_dupes::normalizer::{
+use dupes_rust::normalizer::{
     NormalizationContext, normalize_expr, normalize_item_fn, reindex_placeholders,
 };
-use cargo_dupes::parser::{self, CodeUnit, CodeUnitKind};
+use dupes_rust::parser::{self, CodeUnit, CodeUnitKind};
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -46,7 +46,7 @@ fn make_units(code: &str) -> Vec<CodeUnit> {
     let tmp = TempDir::new().unwrap();
     let file = tmp.path().join("test.rs");
     fs::write(&file, code).unwrap();
-    parser::parse_file(&file, 1, 0, false).unwrap()
+    parser::parse_file(&file, 1, 0).unwrap()
 }
 
 fn parse_and_extract_body(code: &str) -> NormalizedNode {

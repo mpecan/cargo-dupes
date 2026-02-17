@@ -113,10 +113,9 @@ dependencies = [
  "cargo-husky",
  "clap",
  "dupes-core",
+ "dupes-rust",
  "predicates",
- "proc-macro2",
  "serde_json",
- "syn",
  "tempfile",
 ]
 
@@ -194,6 +193,17 @@ dependencies = [
  "thiserror",
  "toml",
  "walkdir",
+]
+
+[[package]]
+name = "dupes-rust"
+version = "0.1.5"
+dependencies = [
+ "dupes-core",
+ "proc-macro2",
+ "serde_json",
+ "syn",
+ "tempfile",
 ]
 
 [[package]]

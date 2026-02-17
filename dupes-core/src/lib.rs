@@ -1,3 +1,4 @@
+pub mod analyzer;
 pub mod code_unit;
 pub mod config;
 pub mod error;
@@ -11,7 +12,9 @@ pub mod scanner;
 pub mod similarity;
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 
+use analyzer::LanguageAnalyzer;
 use code_unit::CodeUnit;
 use config::Config;
 use fingerprint::Fingerprint;
@@ -30,11 +33,46 @@ pub struct AnalysisResult {
     pub all_fingerprints: HashSet<Fingerprint>,
 }
 
+/// Run the full analysis pipeline using a language analyzer.
+///
+/// Reads each file, parses it via the analyzer, optionally filters test code,
+/// then delegates to [`analyze_units`] for grouping, similarity, and stats.
+pub fn analyze(
+    analyzer: &dyn LanguageAnalyzer,
+    files: &[PathBuf],
+    config: &Config,
+) -> error::Result<AnalysisResult> {
+    let analysis_config = config.analysis_config();
+    let mut units = Vec::new();
+    let mut warnings = Vec::new();
+
+    for path in files {
+        let source = match std::fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(e) => {
+                warnings.push(format!("Failed to read {}: {}", path.display(), e));
+                continue;
+            }
+        };
+        match analyzer.parse_file(path, &source, &analysis_config) {
+            Ok(mut file_units) => {
+                if config.exclude_tests {
+                    file_units.retain(|u| !analyzer.is_test_code(u));
+                }
+                units.extend(file_units);
+            }
+            Err(e) => warnings.push(e.to_string()),
+        }
+    }
+
+    analyze_units(units, warnings, config)
+}
+
 /// Run the analysis pipeline on pre-parsed code units.
 ///
 /// The caller is responsible for scanning files and parsing them into `CodeUnit`s.
 /// This function handles grouping, similarity detection, ignore filtering, and stats.
-pub fn analyze(
+pub fn analyze_units(
     units: Vec<CodeUnit>,
     warnings: Vec<String>,
     config: &Config,
@@ -65,6 +103,7 @@ pub fn analyze(
                     fingerprint: fingerprint::Fingerprint::from_node(&su.node),
                     node_count: su.node_count,
                     parent_name: Some(unit.name.clone()),
+                    is_test: unit.is_test,
                 })
             })
             .collect();

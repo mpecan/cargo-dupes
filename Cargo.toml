@@ -1,5 +1,5 @@
 [workspace]
-members = ["dupes-core", "cargo-dupes"]
+members = ["dupes-core", "dupes-rust", "cargo-dupes"]
 resolver = "3"
 
 [workspace.package]

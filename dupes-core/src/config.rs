@@ -2,6 +2,15 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+/// The subset of configuration relevant to language-specific parsing.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnalysisConfig {
+    /// Minimum number of AST nodes for a code unit to be analyzed.
+    pub min_nodes: usize,
+    /// Minimum number of source lines for a code unit to be analyzed.
+    pub min_lines: usize,
+}
+
 /// Configuration for cargo-dupes analysis.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -87,10 +96,18 @@ struct CargoPackageMetadata {
 }
 
 impl Config {
+    /// Extract the parsing-relevant subset of the configuration.
+    pub fn analysis_config(&self) -> AnalysisConfig {
+        AnalysisConfig {
+            min_nodes: self.min_nodes,
+            min_lines: self.min_lines,
+        }
+    }
+
     /// Load config with the following precedence:
     /// 1. CLI overrides (applied by the caller after this method)
     /// 2. dupes.toml in the project root
-    /// 3. [package.metadata.dupes] in Cargo.toml
+    /// 3. `[package.metadata.dupes]` in Cargo.toml
     /// 4. Defaults
     pub fn load(root: &Path) -> Self {
         let mut config = Config {

@@ -4,12 +4,14 @@ use std::process;
 
 use clap::{Parser, Subcommand};
 
+use dupes_core::analyzer::LanguageAnalyzer;
 use dupes_core::config::Config;
 use dupes_core::fingerprint::Fingerprint;
 use dupes_core::ignore;
 use dupes_core::output::Reporter;
 use dupes_core::output::json::JsonReporter;
 use dupes_core::output::text::TextReporter;
+use dupes_rust::RustAnalyzer;
 
 #[derive(Parser)]
 #[command(
@@ -182,9 +184,19 @@ fn main() {
         config.min_sub_nodes = min_sub_nodes;
     }
 
-    // 1. Scan for files
+    // 1. Set up the language analyzer
+    let analyzer = RustAnalyzer::new();
+
+    // 2. Scan for files
     let scan_config = dupes_core::scanner::ScanConfig::new(config.root.clone())
-        .with_excludes(config.exclude.clone());
+        .with_excludes(config.exclude.clone())
+        .with_extensions(
+            analyzer
+                .file_extensions()
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        );
     let files = dupes_core::scanner::scan_files(&scan_config);
 
     if files.is_empty() {
@@ -195,16 +207,8 @@ fn main() {
         process::exit(2);
     }
 
-    // 2. Parse all files (syn-specific)
-    let (units, warnings) = cargo_dupes::parser::parse_files(
-        &files,
-        config.min_nodes,
-        config.min_lines,
-        config.exclude_tests,
-    );
-
-    // 3. Run the analysis pipeline
-    let result = match dupes_core::analyze(units, warnings, &config) {
+    // 3. Run the analysis pipeline (parse + group + compare + filter)
+    let result = match dupes_core::analyze(&analyzer, &files, &config) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("Error: {e}");

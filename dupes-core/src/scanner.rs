@@ -1,12 +1,14 @@
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-/// Configuration for scanning the filesystem for Rust source files.
+/// Configuration for scanning the filesystem for source files.
 pub struct ScanConfig {
     /// Root directory to scan.
     pub root: PathBuf,
     /// Glob patterns to exclude (simple substring matching for now).
     pub exclude_patterns: Vec<String>,
+    /// File extensions to include (without the leading dot). Defaults to `["rs"]`.
+    pub extensions: Vec<String>,
 }
 
 impl ScanConfig {
@@ -14,6 +16,7 @@ impl ScanConfig {
         Self {
             root,
             exclude_patterns: Vec::new(),
+            extensions: vec!["rs".to_string()],
         }
     }
 
@@ -21,9 +24,14 @@ impl ScanConfig {
         self.exclude_patterns = patterns;
         self
     }
+
+    pub fn with_extensions(mut self, extensions: Vec<String>) -> Self {
+        self.extensions = extensions;
+        self
+    }
 }
 
-/// Scan for Rust source files under the given config.
+/// Scan for source files under the given config.
 /// Always skips `target/` directories.
 pub fn scan_files(config: &ScanConfig) -> Vec<PathBuf> {
     let mut files = Vec::new();
@@ -49,7 +57,17 @@ pub fn scan_files(config: &ScanConfig) -> Vec<PathBuf> {
         .flatten()
     {
         let path = entry.path();
-        if path.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
+        if path.is_file()
+            && path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(|ext| {
+                    config
+                        .extensions
+                        .iter()
+                        .any(|e| e.eq_ignore_ascii_case(ext))
+                })
+        {
             // Check exclude patterns
             let path_str = path.to_string_lossy();
             let excluded = config

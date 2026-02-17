@@ -198,7 +198,7 @@ fn exclude_option() {
         ])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("No Rust source files"));
+        .stderr(predicate::str::contains("No source files"));
 }
 
 // ── Ignore workflow ─────────────────────────────────────────────────────
@@ -292,7 +292,7 @@ fn error_on_nonexistent_path() {
         .args(["--path", "/nonexistent/path/that/does/not/exist", "stats"])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("No Rust source files"));
+        .stderr(predicate::str::contains("No source files"));
 }
 
 // ── Help ────────────────────────────────────────────────────────────────
