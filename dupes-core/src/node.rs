@@ -11,6 +11,7 @@ pub enum LiteralKind {
     Byte,
     Char,
     Bool,
+    Null,
 }
 
 /// Kinds of placeholders — what the original identifier referred to.
@@ -54,6 +55,14 @@ pub enum BinOpKind {
     BitOrAssign,
     ShlAssign,
     ShrAssign,
+    FloorDiv,
+    Pow,
+    In,
+    NotIn,
+    Is,
+    IsNot,
+    FloorDivAssign,
+    PowAssign,
     Other,
 }
 
@@ -110,6 +119,7 @@ pub enum NodeKind {
     // Compound types
     Tuple,
     Array,
+    Set,
     Repeat,
 
     // Type operations
@@ -118,6 +128,7 @@ pub enum NodeKind {
 
     // Async/error
     Await,
+    Yield,
     Try,
 
     // Control flow structures

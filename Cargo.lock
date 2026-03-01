@@ -188,10 +188,12 @@ dependencies = [
  "assert_cmd",
  "clap",
  "dupes-core",
+ "dupes-python",
  "dupes-rust",
  "predicates",
  "serde_json",
  "tempfile",
+ "walkdir",
 ]
 
 [[package]]
@@ -217,6 +219,17 @@ dependencies = [
  "thiserror",
  "toml",
  "walkdir",
+]
+
+[[package]]
+name = "dupes-python"
+version = "0.2.1"
+dependencies = [
+ "dupes-core",
+ "dupes-treesitter",
+ "tempfile",
+ "tree-sitter",
+ "tree-sitter-python",
 ]
 
 [[package]]

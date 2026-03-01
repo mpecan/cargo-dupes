@@ -23,6 +23,8 @@ pub enum CliError {
     NoSourceFiles(PathBuf),
     /// No recognized source files for language auto-detection (exit code 2).
     NoRecognizedFiles,
+    /// Multiple languages detected — user must specify `--language` (exit code 2).
+    AmbiguousLanguage(Vec<String>),
     /// Analysis pipeline failed (exit code 2).
     Analysis(crate::error::Error),
     /// Invalid fingerprint string (exit code 2).
@@ -40,6 +42,7 @@ impl CliError {
             Self::Io(_)
             | Self::NoSourceFiles(_)
             | Self::NoRecognizedFiles
+            | Self::AmbiguousLanguage(_)
             | Self::Analysis(_)
             | Self::InvalidFingerprint(_) => 2,
         }
@@ -57,6 +60,13 @@ impl std::fmt::Display for CliError {
                 write!(
                     f,
                     "No recognized source files found. Use --language to specify the language."
+                )
+            }
+            Self::AmbiguousLanguage(langs) => {
+                write!(
+                    f,
+                    "Multiple languages detected: {}. Use --language to specify which to analyze.",
+                    langs.join(", ")
                 )
             }
             Self::Analysis(e) => write!(f, "{e}"),

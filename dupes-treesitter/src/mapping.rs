@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use dupes_core::node::{BinOpKind, LiteralKind, UnOpKind};
+use dupes_core::node::{BinOpKind, LiteralKind, NodeKind, UnOpKind};
 
 /// Table-driven mapping from tree-sitter node kinds to dupes-core concepts.
 ///
@@ -52,6 +52,13 @@ pub struct NodeMapping {
     /// Node kinds representing match/case arm entries within a match statement.
     /// Used for fixed-position child extraction: `[pattern, guard_or_None, body]`.
     pub match_arm_kinds: HashSet<&'static str>,
+    /// Direct node-kind-to-`NodeKind` mappings. Named children are recursively
+    /// normalized and attached as children. Zero-child nodes produce leaves.
+    ///
+    /// Use this for constructs that map directly to a `NodeKind` variant and
+    /// whose children should be normalized generically (e.g., `break_statement` →
+    /// `Break`, `await` → `Await [child]`, `tuple` → `Tuple [elem, ...]`).
+    pub node_kinds: HashMap<&'static str, NodeKind>,
 }
 
 impl NodeMapping {
@@ -78,6 +85,7 @@ impl NodeMapping {
             binary_op_kinds: HashSet::new(),
             unary_op_kinds: HashSet::new(),
             match_arm_kinds: HashSet::new(),
+            node_kinds: HashMap::new(),
         }
     }
 
@@ -221,6 +229,18 @@ impl NodeMapping {
     #[must_use]
     pub fn match_arms(mut self, kinds: &[&'static str]) -> Self {
         self.match_arm_kinds.extend(kinds);
+        self
+    }
+
+    /// Add direct node-kind-to-`NodeKind` mappings.
+    ///
+    /// Named children are recursively normalized. Zero-child nodes produce leaves.
+    /// Use this for constructs like `break_statement` → `Break`, `await` → `Await`.
+    #[must_use]
+    pub fn node_kinds(mut self, mappings: &[(&'static str, NodeKind)]) -> Self {
+        for (kind, node_kind) in mappings {
+            self.node_kinds.insert(kind, node_kind.clone());
+        }
         self
     }
 }
