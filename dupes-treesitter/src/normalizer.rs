@@ -122,6 +122,9 @@ pub fn normalize_ts_node(
 
     // 9. Unknown named nodes → recursively normalize children, wrap in Block
     let mut children = normalize_named_children(node, source, mapping, ctx);
+    if children.is_empty() {
+        return NormalizedNode::leaf(NodeKind::Opaque);
+    }
     if children.len() == 1 {
         return children.swap_remove(0);
     }
@@ -367,7 +370,6 @@ mod tests {
                 ("string", LiteralKind::Str),
                 ("true", LiteralKind::Bool),
                 ("false", LiteralKind::Bool),
-                ("none", LiteralKind::Bool),
             ])
             .binary_ops(&[
                 ("+", BinOpKind::Add),

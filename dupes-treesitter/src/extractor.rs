@@ -95,8 +95,8 @@ pub fn extract_code_units(
 
         let normalized_body = normalize_ts_node(body, source, mapping, &mut ctx);
 
-        // Count nodes and filter
-        let node_count = count_nodes(&normalized_body);
+        // Count nodes (sig + body) for consistency with other analyzers
+        let node_count = count_nodes(&signature) + count_nodes(&normalized_body);
         if node_count < config.min_nodes {
             continue;
         }

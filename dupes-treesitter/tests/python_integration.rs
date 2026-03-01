@@ -19,7 +19,6 @@ fn python_mapping() -> NodeMapping {
             ("string", LiteralKind::Str),
             ("true", LiteralKind::Bool),
             ("false", LiteralKind::Bool),
-            ("none", LiteralKind::Bool),
         ])
         .binary_ops(&[
             ("+", BinOpKind::Add),
