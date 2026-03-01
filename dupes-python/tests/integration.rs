@@ -345,14 +345,19 @@ fn comments_only_file_returns_no_units() {
 
 #[test]
 fn syntax_error_does_not_panic() {
-    let analyzer = PythonAnalyzer::new();
-    let result = analyzer.parse_file(
-        &PathBuf::from("bad.py"),
-        "def broken(\n    pass\n)))\n",
-        &default_config(),
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let analyzer = PythonAnalyzer::new();
+        let _ = analyzer.parse_file(
+            &PathBuf::from("bad.py"),
+            "def broken(\n    pass\n)))\n",
+            &default_config(),
+        );
+    }));
+    assert!(
+        result.is_ok(),
+        "parse_file should not panic on syntax errors"
     );
-    // Should succeed (tree-sitter is error-tolerant) or return an error, but not panic
-    assert!(result.is_ok());
 }
 
 #[test]
@@ -381,4 +386,82 @@ fn pyi_stub_file_parses() {
         &default_config(),
     );
     assert!(result.is_ok());
+}
+
+#[test]
+fn chained_comparison_preserves_all_operands() {
+    let units = parse(
+        r#"
+def chained(a, b, c):
+    if a < b < c:
+        return a
+    return c
+
+def simple(a, b, c):
+    if a < c:
+        return a
+    return c
+"#,
+    );
+    assert_eq!(units.len(), 2);
+    assert_ne!(
+        units[0].fingerprint, units[1].fingerprint,
+        "a < b < c and a < c should produce different fingerprints"
+    );
+}
+
+#[test]
+fn set_and_list_distinguished() {
+    let units = parse(
+        r#"
+def make_set(a, b):
+    x = {a, b}
+    return x
+
+def make_list(a, b):
+    x = [a, b]
+    return x
+"#,
+    );
+    assert_eq!(units.len(), 2);
+    assert_ne!(
+        units[0].fingerprint, units[1].fingerprint,
+        "Set and list should produce different fingerprints"
+    );
+}
+
+#[test]
+fn floor_div_and_regular_div_different_fingerprint() {
+    let units = parse(
+        r#"
+def floor_div(a, b):
+    return a // b
+
+def regular_div(a, b):
+    return a / b
+"#,
+    );
+    assert_eq!(units.len(), 2);
+    assert_ne!(
+        units[0].fingerprint, units[1].fingerprint,
+        "// and / should produce different fingerprints"
+    );
+}
+
+#[test]
+fn pow_and_mul_different_fingerprint() {
+    let units = parse(
+        r#"
+def power(a, b):
+    return a ** b
+
+def multiply(a, b):
+    return a * b
+"#,
+    );
+    assert_eq!(units.len(), 2);
+    assert_ne!(
+        units[0].fingerprint, units[1].fingerprint,
+        "** and * should produce different fingerprints"
+    );
 }

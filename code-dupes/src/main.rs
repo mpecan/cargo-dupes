@@ -1,7 +1,9 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process;
 
 use clap::{Parser, ValueEnum};
+use walkdir::WalkDir;
 
 use dupes_core::analyzer::LanguageAnalyzer;
 use dupes_core::cli::{self, CliError, CliOverrides, Command, OutputFormat};
@@ -96,25 +98,50 @@ fn resolve_analyzer(language: &Language) -> Box<dyn LanguageAnalyzer> {
 
 /// Auto-detect language by scanning for files matching known extensions.
 ///
-/// Uses a static extension registry (no analyzer construction needed).
-/// Returns an error if multiple languages are detected — the user must
-/// specify `--language` to disambiguate.
+/// Performs a single directory walk (instead of one per language) and collects
+/// file extensions, then matches against `Language::ALL`. Returns an error if
+/// multiple languages are detected — the user must specify `--language` to
+/// disambiguate.
 fn auto_detect_language(root: &std::path::Path) -> Result<Language, CliError> {
-    let mut detected = Vec::new();
+    // Collect all file extensions found in a single walk.
+    let mut found_extensions = HashSet::new();
 
-    for language in Language::ALL {
-        let extensions: Vec<String> = language
-            .extensions()
-            .iter()
-            .map(|e| (*e).to_string())
-            .collect();
-        let scan_config =
-            dupes_core::scanner::ScanConfig::new(root.to_path_buf()).with_extensions(extensions);
-        let files = dupes_core::scanner::scan_files(&scan_config);
-        if !files.is_empty() {
-            detected.push(language.clone());
+    for entry in WalkDir::new(root)
+        .into_iter()
+        .filter_entry(|e| {
+            let path = e.path();
+            if path.is_dir()
+                && let Some(name) = path.file_name().and_then(|n| n.to_str())
+            {
+                if name == "target" {
+                    return false;
+                }
+                if name.starts_with('.') && path != root {
+                    return false;
+                }
+            }
+            true
+        })
+        .flatten()
+    {
+        let path = entry.path();
+        if path.is_file()
+            && let Some(ext) = path.extension().and_then(|e| e.to_str())
+        {
+            found_extensions.insert(ext.to_ascii_lowercase());
         }
     }
+
+    // Match found extensions against known languages.
+    let detected: Vec<Language> = Language::ALL
+        .iter()
+        .filter(|lang| {
+            lang.extensions()
+                .iter()
+                .any(|ext| found_extensions.contains(*ext))
+        })
+        .cloned()
+        .collect();
 
     match detected.len() {
         0 => Err(CliError::NoRecognizedFiles),

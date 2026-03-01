@@ -345,20 +345,34 @@ fn normalize_binary_op(
     } else {
         // Fall back to positional named children (e.g., Python comparison_operator
         // which uses positional children instead of left/right field names).
-        // For chained comparisons (a < b < c), we capture the first and last operands.
+        // For chained comparisons (a < b < c), fold all operands into nested
+        // BinaryOp nodes: BinaryOp(Lt, [a, BinaryOp(Lt, [b, c])])
         let cursor = &mut node.walk();
         let named: Vec<_> = node.named_children(cursor).collect();
-        let l = named.first().map_or_else(NormalizedNode::none, |c| {
-            normalize_ts_node(*c, source, mapping, ctx)
-        });
-        let r = if named.len() > 1 {
-            named.last().map_or_else(NormalizedNode::none, |c| {
+        if named.len() <= 1 {
+            let l = named.first().map_or_else(NormalizedNode::none, |c| {
                 normalize_ts_node(*c, source, mapping, ctx)
-            })
-        } else {
-            NormalizedNode::none()
-        };
-        (l, r)
+            });
+            return NormalizedNode::with_children(
+                NodeKind::BinaryOp(op_kind),
+                vec![l, NormalizedNode::none()],
+            );
+        }
+        // Normalize all operands
+        let operands: Vec<NormalizedNode> = named
+            .iter()
+            .map(|c| normalize_ts_node(*c, source, mapping, ctx))
+            .collect();
+        // Fold from right: [a, b, c] → BinaryOp(op, [a, BinaryOp(op, [b, c])])
+        let mut iter = operands.into_iter().rev();
+        let mut right = iter.next().unwrap();
+        for operand in iter {
+            right = NormalizedNode::with_children(
+                NodeKind::BinaryOp(op_kind.clone()),
+                vec![operand, right],
+            );
+        }
+        return right;
     };
 
     NormalizedNode::with_children(NodeKind::BinaryOp(op_kind), vec![left, right])

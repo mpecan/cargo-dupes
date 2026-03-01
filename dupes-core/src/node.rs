@@ -55,6 +55,14 @@ pub enum BinOpKind {
     BitOrAssign,
     ShlAssign,
     ShrAssign,
+    FloorDiv,
+    Pow,
+    In,
+    NotIn,
+    Is,
+    IsNot,
+    FloorDivAssign,
+    PowAssign,
     Other,
 }
 
@@ -111,6 +119,7 @@ pub enum NodeKind {
     // Compound types
     Tuple,
     Array,
+    Set,
     Repeat,
 
     // Type operations

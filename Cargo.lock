@@ -193,6 +193,7 @@ dependencies = [
  "predicates",
  "serde_json",
  "tempfile",
+ "walkdir",
 ]
 
 [[package]]

@@ -81,7 +81,7 @@ impl LanguageAnalyzer for PythonAnalyzer {
 /// # Covered constructs
 ///
 /// - Identifiers, literals (int, float, str, bool, None)
-/// - Binary operators (+, -, *, /, %, ==, !=, <, >, <=, >=, and, or, bitwise, augmented assignment)
+/// - Binary operators (+, -, *, /, //, **, %, ==, !=, <, >, <=, >=, and, or, in, not in, is, is not, bitwise, augmented assignment)
 /// - Unary operators (not, -, ~)
 /// - Control flow: if, for, while, match/case, return, break, continue
 /// - Calls, assignments (plain + augmented), blocks, function definitions
@@ -147,7 +147,16 @@ pub fn python_mapping() -> NodeMapping {
             ("^=", BinOpKind::BitXorAssign),
             ("<<=", BinOpKind::ShlAssign),
             (">>=", BinOpKind::ShrAssign),
-            // Power, floor div, matrix multiply — fall back to Other
+            // Floor division and power
+            ("//", BinOpKind::FloorDiv),
+            ("**", BinOpKind::Pow),
+            ("//=", BinOpKind::FloorDivAssign),
+            ("**=", BinOpKind::PowAssign),
+            // Membership and identity
+            ("in", BinOpKind::In),
+            ("not in", BinOpKind::NotIn),
+            ("is", BinOpKind::Is),
+            ("is not", BinOpKind::IsNot),
         ])
         .unary_ops(&[
             ("not", UnOpKind::Not),
@@ -182,7 +191,7 @@ pub fn python_mapping() -> NodeMapping {
             // Containers
             ("tuple", NodeKind::Tuple),
             ("list", NodeKind::Array),
-            ("set", NodeKind::Array),
+            ("set", NodeKind::Set),
             ("dictionary", NodeKind::StructInit),
             // Access
             ("attribute", NodeKind::FieldAccess),

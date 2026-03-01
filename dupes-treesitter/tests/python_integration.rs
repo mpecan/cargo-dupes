@@ -62,6 +62,12 @@ fn python_mapping() -> NodeMapping {
         .binary_op_kinds(&["binary_operator", "boolean_operator", "comparison_operator"])
         .unary_op_kinds(&["not_operator", "unary_operator"])
         .match_arms(&["case_clause"])
+        .node_kinds(&[
+            ("break_statement", NodeKind::Break),
+            ("continue_statement", NodeKind::Continue),
+            ("tuple", NodeKind::Tuple),
+            ("list", NodeKind::Array),
+        ])
 }
 
 /// Parse Python source and return the tree.
@@ -533,4 +539,31 @@ fn for_loop_normalization() {
     let node = normalize_ts_node(for_node, source.as_bytes(), &mapping, &mut ctx);
     assert_eq!(node.kind, NodeKind::ForLoop);
     assert_eq!(node.children.len(), 3); // pattern, iterable, body
+}
+
+#[test]
+fn node_kinds_mapping_produces_correct_kind() {
+    let source = "for x in items:\n    break\n";
+    let tree = parse_python(source);
+    let mapping = python_mapping();
+    let mut ctx = NormalizationContext::new();
+
+    let root = tree.root_node();
+    let for_node = root.named_child(0).unwrap();
+    let node = normalize_ts_node(for_node, source.as_bytes(), &mapping, &mut ctx);
+
+    assert_eq!(node.kind, NodeKind::ForLoop);
+    // body is the third child; the break statement should be inside the body block
+    let body = &node.children[2];
+    // The body block should contain a Break node
+    fn find_break(node: &NormalizedNode) -> bool {
+        if node.kind == NodeKind::Break {
+            return true;
+        }
+        node.children.iter().any(find_break)
+    }
+    assert!(
+        find_break(body),
+        "break_statement should be normalized to NodeKind::Break via node_kinds mapping"
+    );
 }
