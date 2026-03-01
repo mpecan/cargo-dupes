@@ -9,7 +9,11 @@ use dupes_core::node::{
 use dupes_treesitter::mapping::NodeMapping;
 use dupes_treesitter::normalizer::normalize_ts_node;
 
-/// Build a Python-flavored `NodeMapping`.
+/// Build a minimal Python `NodeMapping` for testing the tree-sitter normalization layer.
+///
+/// NOTE: The production Python mapping lives in `dupes_python::python_mapping()` and is
+/// more comprehensive (augmented assignments, containers, node_kinds for break/continue/
+/// await/yield, etc.). This test-only version covers just enough for normalizer unit tests.
 fn python_mapping() -> NodeMapping {
     NodeMapping::new()
         .identifiers(&["identifier"])

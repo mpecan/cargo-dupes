@@ -5,6 +5,7 @@ use clap::{Parser, ValueEnum};
 
 use dupes_core::analyzer::LanguageAnalyzer;
 use dupes_core::cli::{self, CliError, CliOverrides, Command, OutputFormat};
+use dupes_python::PythonAnalyzer;
 use dupes_rust::RustAnalyzer;
 
 #[derive(Parser)]
@@ -45,7 +46,7 @@ struct Cli {
     #[arg(long, global = true)]
     exclude: Vec<String>,
 
-    /// Exclude test code (#[test] functions and #[cfg(test)] modules).
+    /// Exclude test code (language-specific detection).
     #[arg(long, global = true)]
     exclude_tests: bool,
 
@@ -61,32 +62,67 @@ struct Cli {
 #[derive(Clone, ValueEnum)]
 enum Language {
     Rust,
+    Python,
+}
+
+impl Language {
+    /// Static file extension registry — avoids constructing analyzers for detection.
+    const fn extensions(&self) -> &'static [&'static str] {
+        match self {
+            Self::Rust => &["rs"],
+            Self::Python => &["py", "pyi"],
+        }
+    }
+
+    const ALL: &[Self] = &[Self::Rust, Self::Python];
+}
+
+impl std::fmt::Display for Language {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Rust => write!(f, "rust"),
+            Self::Python => write!(f, "python"),
+        }
+    }
 }
 
 /// Create a language analyzer for the given language.
 fn resolve_analyzer(language: &Language) -> Box<dyn LanguageAnalyzer> {
     match language {
         Language::Rust => Box::new(RustAnalyzer::new()),
+        Language::Python => Box::new(PythonAnalyzer::new()),
     }
 }
 
-/// Auto-detect language by scanning for files matching known analyzer extensions.
+/// Auto-detect language by scanning for files matching known extensions.
+///
+/// Uses a static extension registry (no analyzer construction needed).
+/// Returns an error if multiple languages are detected — the user must
+/// specify `--language` to disambiguate.
 fn auto_detect_language(root: &std::path::Path) -> Result<Language, CliError> {
-    let analyzer = RustAnalyzer::new();
-    let scan_config = dupes_core::scanner::ScanConfig::new(root.to_path_buf()).with_extensions(
-        analyzer
-            .file_extensions()
-            .iter()
-            .map(|ext| (*ext).to_string())
-            .collect(),
-    );
-    let files = dupes_core::scanner::scan_files(&scan_config);
+    let mut detected = Vec::new();
 
-    if !files.is_empty() {
-        return Ok(Language::Rust);
+    for language in Language::ALL {
+        let extensions: Vec<String> = language
+            .extensions()
+            .iter()
+            .map(|e| (*e).to_string())
+            .collect();
+        let scan_config =
+            dupes_core::scanner::ScanConfig::new(root.to_path_buf()).with_extensions(extensions);
+        let files = dupes_core::scanner::scan_files(&scan_config);
+        if !files.is_empty() {
+            detected.push(language.clone());
+        }
     }
 
-    Err(CliError::NoRecognizedFiles)
+    match detected.len() {
+        0 => Err(CliError::NoRecognizedFiles),
+        1 => Ok(detected.into_iter().next().unwrap()),
+        _ => Err(CliError::AmbiguousLanguage(
+            detected.iter().map(ToString::to_string).collect(),
+        )),
+    }
 }
 
 fn main() {

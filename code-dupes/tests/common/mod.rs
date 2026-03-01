@@ -7,6 +7,12 @@ pub fn fixture_path(name: &str) -> PathBuf {
         .join(name)
 }
 
+pub fn code_dupes_fixture_path(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name)
+}
+
 pub fn code_dupes() -> assert_cmd::Command {
     cargo_bin_cmd!("code-dupes")
 }

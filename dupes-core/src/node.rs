@@ -11,6 +11,7 @@ pub enum LiteralKind {
     Byte,
     Char,
     Bool,
+    Null,
 }
 
 /// Kinds of placeholders — what the original identifier referred to.
@@ -118,6 +119,7 @@ pub enum NodeKind {
 
     // Async/error
     Await,
+    Yield,
     Try,
 
     // Control flow structures

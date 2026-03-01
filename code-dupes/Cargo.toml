@@ -17,6 +17,7 @@ workspace = true
 
 [dependencies]
 dupes-core = { path = "../dupes-core", version = "0.2.1", features = ["cli"] }
+dupes-python = { path = "../dupes-python", version = "0.2.1" }
 dupes-rust = { path = "../dupes-rust", version = "0.2.1" }
 clap = { version = "4", features = ["derive"] }
 

@@ -19,6 +19,7 @@
   "packages": {
     "dupes-core": {},
     "dupes-treesitter": {},
+    "dupes-python": {},
     "dupes-rust": {},
     "cargo-dupes": {},
     "code-dupes": {}
@@ -31,7 +32,7 @@
     {
       "type": "linked-versions",
       "groupName": "workspace",
-      "components": ["dupes-core", "dupes-treesitter", "dupes-rust", "cargo-dupes", "code-dupes"]
+      "components": ["dupes-core", "dupes-treesitter", "dupes-python", "dupes-rust", "cargo-dupes", "code-dupes"]
     }
   ]
 }

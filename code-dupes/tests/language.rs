@@ -1,6 +1,6 @@
 mod common;
 
-use common::{code_dupes, fixture_path};
+use common::{code_dupes, code_dupes_fixture_path, fixture_path};
 use predicates::prelude::*;
 
 #[test]
@@ -133,4 +133,116 @@ fn auto_detect_finds_deeply_nested_rs_files() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Total code units analyzed"));
+}
+
+#[test]
+fn explicit_language_python() {
+    code_dupes()
+        .args([
+            "--path",
+            code_dupes_fixture_path("python_dupes").to_str().unwrap(),
+            "--language",
+            "python",
+            "stats",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Total code units analyzed"));
+}
+
+#[test]
+fn auto_detect_python_from_py_files() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::write(
+        tmp.path().join("example.py"),
+        "def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n",
+    )
+    .unwrap();
+    code_dupes()
+        .args(["--path", tmp.path().to_str().unwrap(), "stats"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Total code units analyzed"));
+}
+
+#[test]
+fn python_detects_exact_duplicates() {
+    code_dupes()
+        .args([
+            "--path",
+            code_dupes_fixture_path("python_dupes").to_str().unwrap(),
+            "--language",
+            "python",
+            "--min-nodes",
+            "1",
+            "--min-lines",
+            "1",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Exact Duplicates"));
+}
+
+#[test]
+fn ambiguous_language_detection_errors() {
+    // Directory with both .rs and .py files should report ambiguity
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::write(
+        tmp.path().join("lib.rs"),
+        "pub fn hello() { println!(\"hello\"); }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("example.py"),
+        "def hello():\n    print('hello')\n",
+    )
+    .unwrap();
+    code_dupes()
+        .args(["--path", tmp.path().to_str().unwrap(), "stats"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("Multiple languages detected"));
+}
+
+#[test]
+fn ambiguous_language_resolved_with_explicit_flag() {
+    // When multiple languages are present, --language resolves the ambiguity
+    let tmp = tempfile::TempDir::new().unwrap();
+    std::fs::write(
+        tmp.path().join("lib.rs"),
+        "pub fn hello() { println!(\"hello\"); }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("example.py"),
+        "def hello():\n    print('hello')\n",
+    )
+    .unwrap();
+    code_dupes()
+        .args([
+            "--path",
+            tmp.path().to_str().unwrap(),
+            "--language",
+            "python",
+            "stats",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Total code units analyzed"));
+}
+
+#[test]
+fn python_explicit_language_on_empty_dir() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    code_dupes()
+        .args([
+            "--path",
+            tmp.path().to_str().unwrap(),
+            "--language",
+            "python",
+            "stats",
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("No source files"));
 }

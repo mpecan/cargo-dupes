@@ -67,6 +67,28 @@ jobs:
           echo "Timed out waiting for dupes-treesitter ${VERSION}."
           exit 1
 
+      - name: Publish dupes-python
+        run: cargo publish -p dupes-python
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for dupes-python on crates.io
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "dupes-python") | .version')"
+          echo "Waiting for dupes-python ${VERSION}..."
+          for attempt in $(seq 1 10); do
+            if curl -fsS -H "User-Agent: cargo-dupes-ci" "https://crates.io/api/v1/crates/dupes-python/${VERSION}" > /dev/null; then
+              echo "dupes-python ${VERSION} is available."
+              exit 0
+            fi
+            echo "Attempt ${attempt}/10: not yet available. Sleeping 15s..."
+            sleep 15
+          done
+          echo "Timed out waiting for dupes-python ${VERSION}."
+          exit 1
+
       - name: Publish dupes-rust
         run: cargo publish -p dupes-rust
         env:

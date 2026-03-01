@@ -51,6 +51,12 @@ pub fn normalize_ts_node(
         return NormalizedNode::leaf(NodeKind::Literal(lit_kind.clone()));
     }
 
+    // 5b. Direct node-kind-to-NodeKind mappings
+    if let Some(mapped_kind) = mapping.node_kinds.get(kind) {
+        let children = normalize_named_children(node, source, mapping, ctx);
+        return NormalizedNode::with_children(mapped_kind.clone(), children);
+    }
+
     // 6. Structural kinds
 
     // If/conditional
@@ -313,6 +319,10 @@ fn normalize_assignment(
 
 /// Normalize a binary operation.
 /// Produces: BinaryOp(kind) [left, right]
+///
+/// Uses `left`/`right` field names first (e.g., `binary_operator`, `boolean_operator`).
+/// Falls back to positional named children for nodes without field names
+/// (e.g., Python `comparison_operator`).
 fn normalize_binary_op(
     node: tree_sitter::Node,
     source: &[u8],
@@ -323,8 +333,34 @@ fn normalize_binary_op(
         .and_then(|text| mapping.binary_op_map.get(text.as_str()).cloned())
         .unwrap_or(BinOpKind::Other);
 
-    let left = get_field_or_none(node, "left", source, mapping, ctx);
-    let right = get_field_or_none(node, "right", source, mapping, ctx);
+    // Try field-based access first (binary_operator, boolean_operator)
+    let left_field = node.child_by_field_name("left");
+    let right_field = node.child_by_field_name("right");
+
+    let (left, right) = if let (Some(l), Some(r)) = (left_field, right_field) {
+        (
+            normalize_ts_node(l, source, mapping, ctx),
+            normalize_ts_node(r, source, mapping, ctx),
+        )
+    } else {
+        // Fall back to positional named children (e.g., Python comparison_operator
+        // which uses positional children instead of left/right field names).
+        // For chained comparisons (a < b < c), we capture the first and last operands.
+        let cursor = &mut node.walk();
+        let named: Vec<_> = node.named_children(cursor).collect();
+        let l = named.first().map_or_else(NormalizedNode::none, |c| {
+            normalize_ts_node(*c, source, mapping, ctx)
+        });
+        let r = if named.len() > 1 {
+            named.last().map_or_else(NormalizedNode::none, |c| {
+                normalize_ts_node(*c, source, mapping, ctx)
+            })
+        } else {
+            NormalizedNode::none()
+        };
+        (l, r)
+    };
+
     NormalizedNode::with_children(NodeKind::BinaryOp(op_kind), vec![left, right])
 }
 
