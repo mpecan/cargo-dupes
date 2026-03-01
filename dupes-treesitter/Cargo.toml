@@ -1,0 +1,23 @@
+[package]
+name = "dupes-treesitter"
+version = "0.2.1"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Tree-sitter normalization bridge for dupes-core"
+readme = "../README.md"
+keywords = ["duplicates", "code-quality", "tree-sitter", "ast"]
+categories = ["development-tools"]
+
+[lints]
+workspace = true
+
+[dependencies]
+dupes-core = { path = "../dupes-core", version = "0.2.1" }
+tree-sitter = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tree-sitter-python = { workspace = true }
