@@ -14,6 +14,9 @@ use tree_sitter::StreamingIterator;
 use crate::mapping::NodeMapping;
 use crate::normalizer::normalize_ts_node;
 
+/// Callback type for resolving `CodeUnitKind` from a tree-sitter node kind string.
+pub type KindResolver = Box<dyn Fn(&str) -> CodeUnitKind + Send + Sync>;
+
 /// Extract `CodeUnit`s from a tree-sitter parse tree using a query.
 ///
 /// The query should use capture names to identify parts of function definitions:
@@ -24,7 +27,8 @@ use crate::normalizer::normalize_ts_node;
 ///
 /// # Parameters
 ///
-/// - `unit_kind` — the `CodeUnitKind` to assign to extracted units (e.g., `Function`, `Method`)
+/// - `kind_for_node` — callback mapping the `@definition` node's tree-sitter kind string
+///   to a `CodeUnitKind` (e.g., `"function_definition"` → `Function`, `"lambda"` → `Closure`)
 /// - `is_test` — callback to determine whether a definition node represents test code;
 ///   receives the function name and the `@definition` node
 ///
@@ -39,7 +43,7 @@ pub fn extract_code_units(
     query: &tree_sitter::Query,
     mapping: &NodeMapping,
     config: &AnalysisConfig,
-    unit_kind: &CodeUnitKind,
+    kind_for_node: impl Fn(&str) -> CodeUnitKind,
     is_test: impl Fn(&str, tree_sitter::Node) -> bool,
 ) -> Vec<CodeUnit> {
     let root = tree.root_node();
@@ -70,8 +74,13 @@ pub fn extract_code_units(
 
         let name = name_node
             .and_then(|n: tree_sitter::Node| n.utf8_text(source).ok())
-            .unwrap_or("<anonymous>")
-            .to_string();
+            .map_or_else(
+                || {
+                    let line = def.start_position().row + 1;
+                    format!("anonymous at {}:{line}", file_path.display())
+                },
+                ToString::to_string,
+            );
 
         // Line numbers: tree-sitter is 0-based, dupes-core is 1-based
         let line_start = def.start_position().row + 1;
@@ -105,7 +114,7 @@ pub fn extract_code_units(
         let test_code = is_test(&name, def);
 
         units.push(CodeUnit {
-            kind: unit_kind.clone(),
+            kind: kind_for_node(def.kind()),
             name,
             file: file_path.to_path_buf(),
             line_start,

@@ -12,7 +12,7 @@ use dupes_core::analyzer::LanguageAnalyzer;
 use dupes_core::code_unit::{CodeUnit, CodeUnitKind};
 use dupes_core::config::AnalysisConfig;
 
-use crate::extractor::extract_code_units;
+use crate::extractor::{KindResolver, extract_code_units};
 use crate::mapping::NodeMapping;
 
 /// A tree-sitter-backed language analyzer.
@@ -37,7 +37,7 @@ pub struct TreeSitterAnalyzer {
     extensions: Vec<&'static str>,
     query: tree_sitter::Query,
     mapping: NodeMapping,
-    unit_kind: CodeUnitKind,
+    kind_resolver: KindResolver,
     #[allow(clippy::type_complexity)]
     is_test: Box<dyn Fn(&str, tree_sitter::Node) -> bool + Send + Sync>,
 }
@@ -61,15 +61,24 @@ impl TreeSitterAnalyzer {
             extensions: extensions.to_vec(),
             query,
             mapping,
-            unit_kind: CodeUnitKind::Function,
+            kind_resolver: Box::new(|_| CodeUnitKind::Function),
             is_test: Box::new(|_, _| false),
         })
     }
 
-    /// Set the `CodeUnitKind` for extracted units (default: `Function`).
+    /// Set a callback to resolve `CodeUnitKind` from the tree-sitter node kind.
+    ///
+    /// The callback receives the `@definition` node's `kind()` string (e.g.,
+    /// `"function_definition"`, `"lambda"`, `"class_definition"`) and should
+    /// return the corresponding `CodeUnitKind`.
+    ///
+    /// Default: all nodes map to `CodeUnitKind::Function`.
     #[must_use]
-    pub const fn with_unit_kind(mut self, kind: CodeUnitKind) -> Self {
-        self.unit_kind = kind;
+    pub fn with_kind_resolver(
+        mut self,
+        f: impl Fn(&str) -> CodeUnitKind + Send + Sync + 'static,
+    ) -> Self {
+        self.kind_resolver = Box::new(f);
         self
     }
 
@@ -110,7 +119,7 @@ impl LanguageAnalyzer for TreeSitterAnalyzer {
             &self.query,
             &self.mapping,
             config,
-            &self.unit_kind,
+            &self.kind_resolver,
             &self.is_test,
         ))
     }
@@ -120,7 +129,7 @@ impl std::fmt::Debug for TreeSitterAnalyzer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TreeSitterAnalyzer")
             .field("extensions", &self.extensions)
-            .field("unit_kind", &self.unit_kind)
+            .field("kind_resolver", &"<closure>")
             .finish_non_exhaustive()
     }
 }
