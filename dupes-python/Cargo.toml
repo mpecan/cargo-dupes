@@ -1,6 +1,6 @@
 [package]
 name = "dupes-python"
-version = "0.2.1"
+version = "0.2.2"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -15,8 +15,8 @@ categories = ["development-tools"]
 workspace = true
 
 [dependencies]
-dupes-core = { path = "../dupes-core", version = "0.2.1" }
-dupes-treesitter = { path = "../dupes-treesitter", version = "0.2.1" }
+dupes-core = { path = "../dupes-core", version = "0.2.2" }
+dupes-treesitter = { path = "../dupes-treesitter", version = "0.2.2" }
 tree-sitter = { workspace = true }
 tree-sitter-python = { workspace = true }
 
