@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.2](https://github.com/mpecan/cargo-dupes/compare/dupes-rust-v0.2.1...dupes-rust-v0.2.2) (2026-03-06)
+
+
+### Miscellaneous
+
+* **dupes-rust:** Synchronize workspace versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * dupes-core bumped from 0.2.1 to 0.2.2
+
 ## [0.2.1](https://github.com/mpecan/cargo-dupes/compare/dupes-rust-v0.2.0...dupes-rust-v0.2.1) (2026-02-17)
 
 
