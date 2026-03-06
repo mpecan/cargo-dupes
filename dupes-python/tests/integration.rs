@@ -48,9 +48,21 @@ class Calculator:
         return a - b
 "#,
     );
-    assert_eq!(units.len(), 2);
-    assert_eq!(units[0].name, "add");
-    assert_eq!(units[1].name, "subtract");
+    // 1 class + 2 methods
+    assert_eq!(units.len(), 3);
+    let methods: Vec<_> = units
+        .iter()
+        .filter(|u| u.kind == dupes_core::code_unit::CodeUnitKind::Function)
+        .collect();
+    assert_eq!(methods.len(), 2);
+    assert_eq!(methods[0].name, "add");
+    assert_eq!(methods[1].name, "subtract");
+    let classes: Vec<_> = units
+        .iter()
+        .filter(|u| u.kind == dupes_core::code_unit::CodeUnitKind::Class)
+        .collect();
+    assert_eq!(classes.len(), 1);
+    assert_eq!(classes[0].name, "Calculator");
 }
 
 #[test]
@@ -464,4 +476,310 @@ def multiply(a, b):
         units[0].fingerprint, units[1].fingerprint,
         "** and * should produce different fingerprints"
     );
+}
+
+// -- Lambda extraction --
+
+#[test]
+fn extracts_lambdas() {
+    let units = parse(
+        r#"
+f = lambda x: x + 1
+g = lambda y: y * 2
+"#,
+    );
+    let lambdas: Vec<_> = units
+        .iter()
+        .filter(|u| u.kind == dupes_core::code_unit::CodeUnitKind::Closure)
+        .collect();
+    assert_eq!(lambdas.len(), 2, "Should extract two lambda expressions");
+    assert!(
+        lambdas[0].name.contains("anonymous"),
+        "Lambda should have anonymous name, got: {}",
+        lambdas[0].name
+    );
+}
+
+#[test]
+fn duplicate_lambdas_same_fingerprint() {
+    let units = parse(
+        r#"
+f = lambda x: x + 1
+g = lambda y: y + 1
+"#,
+    );
+    let lambdas: Vec<_> = units
+        .iter()
+        .filter(|u| u.kind == dupes_core::code_unit::CodeUnitKind::Closure)
+        .collect();
+    assert_eq!(lambdas.len(), 2);
+    assert_eq!(
+        lambdas[0].fingerprint, lambdas[1].fingerprint,
+        "Structurally identical lambdas should have the same fingerprint"
+    );
+}
+
+#[test]
+fn different_lambdas_different_fingerprint() {
+    let units = parse(
+        r#"
+f = lambda x: x + 1
+g = lambda x: x * 2
+"#,
+    );
+    let lambdas: Vec<_> = units
+        .iter()
+        .filter(|u| u.kind == dupes_core::code_unit::CodeUnitKind::Closure)
+        .collect();
+    assert_eq!(lambdas.len(), 2);
+    assert_ne!(
+        lambdas[0].fingerprint, lambdas[1].fingerprint,
+        "Structurally different lambdas should have different fingerprints"
+    );
+}
+
+// -- Class extraction --
+
+#[test]
+fn extracts_class_bodies() {
+    let units = parse(
+        r#"
+class Foo:
+    def method(self):
+        return 1
+"#,
+    );
+    let classes: Vec<_> = units
+        .iter()
+        .filter(|u| u.kind == dupes_core::code_unit::CodeUnitKind::Class)
+        .collect();
+    assert_eq!(classes.len(), 1, "Should extract one class definition");
+    assert_eq!(classes[0].name, "Foo");
+}
+
+#[test]
+fn duplicate_classes_same_fingerprint() {
+    let units = parse(
+        r#"
+class Foo:
+    def method(self):
+        return self + 1
+
+class Bar:
+    def method(self):
+        return self + 1
+"#,
+    );
+    let classes: Vec<_> = units
+        .iter()
+        .filter(|u| u.kind == dupes_core::code_unit::CodeUnitKind::Class)
+        .collect();
+    assert_eq!(classes.len(), 2);
+    assert_eq!(
+        classes[0].fingerprint, classes[1].fingerprint,
+        "Structurally identical classes should have the same fingerprint"
+    );
+}
+
+#[test]
+fn class_methods_still_extracted_separately() {
+    let units = parse(
+        r#"
+class MyClass:
+    def method_a(self, x):
+        return x + 1
+
+    def method_b(self, x):
+        return x * 2
+"#,
+    );
+    let classes: Vec<_> = units
+        .iter()
+        .filter(|u| u.kind == dupes_core::code_unit::CodeUnitKind::Class)
+        .collect();
+    let functions: Vec<_> = units
+        .iter()
+        .filter(|u| u.kind == dupes_core::code_unit::CodeUnitKind::Function)
+        .collect();
+    assert_eq!(classes.len(), 1, "Should extract the class itself");
+    assert_eq!(
+        functions.len(),
+        2,
+        "Should extract both methods as Function units"
+    );
+}
+
+#[test]
+fn test_class_detected_as_test() {
+    let units = parse(
+        r#"
+class TestCalculator:
+    def test_add(self):
+        assert 1 + 1 == 2
+"#,
+    );
+    let classes: Vec<_> = units
+        .iter()
+        .filter(|u| u.kind == dupes_core::code_unit::CodeUnitKind::Class)
+        .collect();
+    assert_eq!(classes.len(), 1);
+    assert!(
+        classes[0].is_test,
+        "Class with Test prefix should be tagged as test"
+    );
+}
+
+// -- Lambda edge cases --
+
+#[test]
+fn lambda_with_no_parameters() {
+    let units = parse(
+        r#"
+f = lambda: 42
+g = lambda: 99
+"#,
+    );
+    let lambdas: Vec<_> = units
+        .iter()
+        .filter(|u| u.kind == dupes_core::code_unit::CodeUnitKind::Closure)
+        .collect();
+    assert_eq!(
+        lambdas.len(),
+        2,
+        "Lambdas with no parameters should be extracted"
+    );
+    // Both return a literal (Int), so they have the same fingerprint
+    assert_eq!(
+        lambdas[0].fingerprint, lambdas[1].fingerprint,
+        "Parameterless lambdas with same structure should match"
+    );
+}
+
+#[test]
+fn lambda_with_multiple_parameters() {
+    let units = parse(
+        r#"
+f = lambda x, y: x + y
+g = lambda a, b: a + b
+"#,
+    );
+    let lambdas: Vec<_> = units
+        .iter()
+        .filter(|u| u.kind == dupes_core::code_unit::CodeUnitKind::Closure)
+        .collect();
+    assert_eq!(lambdas.len(), 2);
+    assert_eq!(
+        lambdas[0].fingerprint, lambdas[1].fingerprint,
+        "Lambdas with renamed multi-params and same body should match"
+    );
+}
+
+#[test]
+fn lambda_inside_function_extracted() {
+    let units = parse(
+        r#"
+def outer(items):
+    result = list(map(lambda x: x + 1, items))
+    return result
+"#,
+    );
+    let lambdas: Vec<_> = units
+        .iter()
+        .filter(|u| u.kind == dupes_core::code_unit::CodeUnitKind::Closure)
+        .collect();
+    assert!(
+        !lambdas.is_empty(),
+        "Lambda inside a function should be extracted"
+    );
+}
+
+// -- Class edge cases --
+
+#[test]
+fn empty_class_body_respects_min_nodes() {
+    let analyzer = PythonAnalyzer::new();
+    let config = AnalysisConfig {
+        min_nodes: 100,
+        min_lines: 1,
+    };
+    let units = analyzer
+        .parse_file(
+            &PathBuf::from("test.py"),
+            "class Empty:\n    pass\n",
+            &config,
+        )
+        .expect("parse should succeed");
+    let classes: Vec<_> = units
+        .iter()
+        .filter(|u| u.kind == dupes_core::code_unit::CodeUnitKind::Class)
+        .collect();
+    assert!(
+        classes.is_empty(),
+        "Empty class should be filtered by high min_nodes"
+    );
+}
+
+#[test]
+fn decorated_class_same_fingerprint_as_plain() {
+    let units = parse(
+        r#"
+@some_decorator
+class Foo:
+    def method(self):
+        return self + 1
+
+class Bar:
+    def method(self):
+        return self + 1
+"#,
+    );
+    let classes: Vec<_> = units
+        .iter()
+        .filter(|u| u.kind == dupes_core::code_unit::CodeUnitKind::Class)
+        .collect();
+    assert_eq!(classes.len(), 2);
+    assert_eq!(
+        classes[0].fingerprint, classes[1].fingerprint,
+        "Decorated and plain classes with same body should have same fingerprint"
+    );
+}
+
+#[test]
+fn nested_class_extraction() {
+    let units = parse(
+        r#"
+class Outer:
+    class Inner:
+        def method(self):
+            return 1
+    def outer_method(self):
+        return 2
+"#,
+    );
+    let classes: Vec<_> = units
+        .iter()
+        .filter(|u| u.kind == dupes_core::code_unit::CodeUnitKind::Class)
+        .collect();
+    assert!(
+        classes.len() >= 2,
+        "Both outer and inner classes should be extracted, got {}",
+        classes.len()
+    );
+}
+
+#[test]
+fn class_with_inheritance_extracted() {
+    let units = parse(
+        r#"
+class Child(Parent):
+    def method(self):
+        return self + 1
+"#,
+    );
+    let classes: Vec<_> = units
+        .iter()
+        .filter(|u| u.kind == dupes_core::code_unit::CodeUnitKind::Class)
+        .collect();
+    assert_eq!(classes.len(), 1);
+    assert_eq!(classes[0].name, "Child");
 }

@@ -37,12 +37,12 @@ dupes-treesitter/                 # Tree-sitter normalization bridge (depends on
     analyzer.rs                   # TreeSitterAnalyzer implementing LanguageAnalyzer
     mapping.rs                    # NodeMapping table-driven config (builder pattern)
     normalizer.rs                 # normalize_ts_node(): tree-sitter CST → NormalizedNode
-    extractor.rs                  # extract_code_units(): query-based CodeUnit extraction
+    extractor.rs                  # extract_code_units(): query-based CodeUnit extraction (functions, lambdas, classes)
   tests/
     python_integration.rs         # Test-only Python mapping for normalizer unit tests
 dupes-python/                     # Python language analyzer (depends on dupes-treesitter + dupes-core)
   src/
-    lib.rs                        # PythonAnalyzer wrapping TreeSitterAnalyzer, python_mapping()
+    lib.rs                        # PythonAnalyzer wrapping TreeSitterAnalyzer, python_mapping(); extracts functions, lambdas, classes
   tests/
     integration.rs                # Python analyzer integration tests
     core_with_python_tests.rs     # Core pipeline tests using Python analyzer
@@ -71,14 +71,14 @@ code-dupes/                       # Multi-language CLI (depends on dupes-rust + 
 
 ```sh
 cargo build                       # Build all workspace members
-cargo test                        # Run all ~340 tests
+cargo test                        # Run all ~361 tests
 cargo test -p dupes-core          # 69 core unit tests
-cargo test -p dupes-treesitter    # 44 tree-sitter tests (28 unit + 16 integration)
-cargo test -p dupes-python        # 33 Python analyzer tests (22 integration + 9 core pipeline + 2 suites)
+cargo test -p dupes-treesitter    # 45 tree-sitter tests (28 unit + 17 integration)
+cargo test -p dupes-python        # 51 Python analyzer tests (39 integration + 9 core pipeline + 3 unit)
 cargo test -p dupes-rust --lib    # 64 normalizer + parser + RustAnalyzer unit tests
 cargo test -p dupes-rust --test core_with_syn_tests  # 45 syn-dependent core tests
 cargo test -p cargo-dupes --tests # 35 cargo-dupes CLI integration tests
-cargo test -p code-dupes --tests  # 50 code-dupes CLI integration tests
+cargo test -p code-dupes --tests  # 52 code-dupes CLI integration tests
 cargo clippy --workspace          # Lint (must be clean)
 cargo fmt --all --check           # Format check
 ```
@@ -129,16 +129,16 @@ scan_files → analyze(analyzer, files, config) → AnalysisResult
 
 | Module | File | Responsibility |
 |--------|------|---------------|
-| **TreeSitterAnalyzer** | `dupes-treesitter/src/analyzer.rs` | Generic `LanguageAnalyzer` impl using tree-sitter. Configured with `NodeMapping`, query, test detector, extensions. |
+| **TreeSitterAnalyzer** | `dupes-treesitter/src/analyzer.rs` | Generic `LanguageAnalyzer` impl using tree-sitter. Configured with `NodeMapping`, query, kind resolver (`with_kind_resolver`), test detector, extensions. |
 | **mapping** | `dupes-treesitter/src/mapping.rs` | `NodeMapping` — table-driven config for tree-sitter normalization. Builder pattern with `identifiers()`, `literals()`, `binary_ops()`, `unary_ops()`, `node_kinds()`, etc. |
 | **normalizer** | `dupes-treesitter/src/normalizer.rs` | `normalize_ts_node()`: tree-sitter CST → `NormalizedNode`. Handles identifiers, literals, binary/unary ops, node kinds, structural nodes. |
-| **extractor** | `dupes-treesitter/src/extractor.rs` | `extract_code_units()`: query-based `CodeUnit` extraction from tree-sitter parse tree. |
+| **extractor** | `dupes-treesitter/src/extractor.rs` | `extract_code_units()`: query-based `CodeUnit` extraction from tree-sitter parse tree. `KindResolver` type alias for kind callback. |
 
 ### Module Map — dupes-python
 
 | Module | File | Responsibility |
 |--------|------|---------------|
-| **PythonAnalyzer** | `dupes-python/src/lib.rs` | Thin wrapper around `TreeSitterAnalyzer` with Python-specific `NodeMapping`, tree-sitter query, and `test_` prefix test detection. `python_mapping()` is public for reuse. |
+| **PythonAnalyzer** | `dupes-python/src/lib.rs` | Thin wrapper around `TreeSitterAnalyzer` with Python-specific `NodeMapping`, tree-sitter query (functions, lambdas, classes), kind resolver, and `test_`/`Test` prefix test detection. `python_mapping()` is public for reuse. |
 
 ### Module Map — dupes-rust
 
@@ -178,10 +178,11 @@ Two normalization backends exist:
 
 - `LanguageAnalyzer` — Trait for language-specific parsing. Provides `file_extensions()`, `parse_file()`, `is_test_code()`.
 - `AnalysisConfig` — Parsing-relevant config subset: `min_nodes`, `min_lines`.
-- `CodeUnit` — A function, method, closure, or impl block extracted from source. Contains normalized signature + body, fingerprint, file location, line numbers, `is_test` flag.
+- `CodeUnit` — A function, method, closure, class, or impl block extracted from source. Contains normalized signature + body, fingerprint, file location, line numbers, `is_test` flag.
 - `DuplicateGroup` — A group of code units with the same fingerprint (exact) or above the similarity threshold (near). `fingerprint` is always set (non-optional).
 - `DuplicationStats` — Statistics including group/unit counts, duplicated line counts (exact and near), total lines, and percentage helpers.
 - `Config` — All analysis parameters (min_nodes, min_lines, similarity_threshold, excludes, exclude_tests, CI thresholds including percentage-based).
+- `KindResolver` — Type alias `Box<dyn Fn(&str) -> CodeUnitKind + Send + Sync>` for resolving code unit kind from tree-sitter node kind strings.
 - `NodeMapping` — Table-driven configuration for tree-sitter normalization: identifier kinds, literal kinds, binary/unary op maps, node kinds, structural kinds.
 
 ## CLI Subcommands
@@ -200,12 +201,12 @@ Both `cargo-dupes` (Rust only) and `code-dupes` (multi-language) share the same 
 ## Testing
 
 - **dupes-core unit tests** (69) — Colocated in each module (`#[cfg(test)] mod tests`). No syn dependency.
-- **dupes-treesitter tests** (44) — 28 unit tests + 16 integration tests (Python normalization).
-- **dupes-python tests** (33) — 22 integration tests + 9 core pipeline tests + edge cases.
+- **dupes-treesitter tests** (45) — 28 unit tests + 17 integration tests (Python normalization).
+- **dupes-python tests** (51) — 39 integration tests + 9 core pipeline tests + 3 unit tests.
 - **dupes-rust unit tests** (64) — Colocated in `normalizer.rs`, `parser.rs`, and `lib.rs`. Use `syn::parse_str` to construct test data.
 - **syn-dependent core tests** (45) — In `dupes-rust/tests/core_with_syn_tests.rs`. Tests for grouper, extractor, similarity, fingerprint that require syn to build realistic test data.
 - **cargo-dupes CLI tests** (35) — In `cargo-dupes/tests/cli_integration.rs` using `assert_cmd` + `predicates`.
-- **code-dupes CLI tests** (50) — In `code-dupes/tests/` using `assert_cmd` + `predicates`. Covers language detection, Python analysis, ambiguous detection.
+- **code-dupes CLI tests** (52) — In `code-dupes/tests/` using `assert_cmd` + `predicates`. Covers language detection, Python analysis (functions, lambdas, classes), ambiguous detection.
 - **Fixtures** — `cargo-dupes/tests/fixtures/` (6 Rust projects), `code-dupes/tests/fixtures/` (Python projects: `python_dupes`, `python_test_code`, `python_no_dupes`).
 
 ## syn 2 Gotchas

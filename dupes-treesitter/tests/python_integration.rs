@@ -264,7 +264,7 @@ def subtract(a, b):
         &query,
         &mapping,
         &config,
-        &CodeUnitKind::Function,
+        |_| CodeUnitKind::Function,
         |_, _| false,
     );
 
@@ -305,7 +305,7 @@ fn min_nodes_filter() {
         &query,
         &mapping,
         &config,
-        &CodeUnitKind::Function,
+        |_| CodeUnitKind::Function,
         |_, _| false,
     );
 
@@ -345,7 +345,7 @@ fn min_lines_filter() {
         &query,
         &mapping,
         &config,
-        &CodeUnitKind::Function,
+        |_| CodeUnitKind::Function,
         |_, _| false,
     );
 
@@ -393,7 +393,7 @@ def add2(x, y):
         &query,
         &mapping,
         &config,
-        &CodeUnitKind::Function,
+        |_| CodeUnitKind::Function,
         |_, _| false,
     );
 
@@ -440,7 +440,7 @@ def mul(a, b):
         &query,
         &mapping,
         &config,
-        &CodeUnitKind::Function,
+        |_| CodeUnitKind::Function,
         |_, _| false,
     );
 

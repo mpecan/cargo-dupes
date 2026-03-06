@@ -21,7 +21,7 @@ pub mod normalizer;
 
 // Re-export primary types for convenience
 pub use analyzer::TreeSitterAnalyzer;
-pub use extractor::extract_code_units;
+pub use extractor::{KindResolver, extract_code_units};
 pub use mapping::NodeMapping;
 pub use normalizer::normalize_ts_node;
 

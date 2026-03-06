@@ -232,6 +232,42 @@ fn ambiguous_language_resolved_with_explicit_flag() {
 }
 
 #[test]
+fn python_detects_lambda_duplicates() {
+    code_dupes()
+        .args([
+            "--path",
+            code_dupes_fixture_path("python_dupes").to_str().unwrap(),
+            "--language",
+            "python",
+            "--min-nodes",
+            "1",
+            "--min-lines",
+            "1",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("closure"));
+}
+
+#[test]
+fn python_detects_class_duplicates() {
+    code_dupes()
+        .args([
+            "--path",
+            code_dupes_fixture_path("python_dupes").to_str().unwrap(),
+            "--language",
+            "python",
+            "--min-nodes",
+            "1",
+            "--min-lines",
+            "1",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("class"));
+}
+
+#[test]
 fn python_explicit_language_on_empty_dir() {
     let tmp = tempfile::TempDir::new().unwrap();
     code_dupes()

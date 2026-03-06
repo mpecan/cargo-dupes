@@ -9,6 +9,7 @@ pub enum CodeUnitKind {
     Function,
     Method,
     Closure,
+    Class,
     ImplBlock,
     TraitImplBlock,
     // Sub-function kinds
@@ -24,6 +25,7 @@ impl std::fmt::Display for CodeUnitKind {
             Self::Function => write!(f, "function"),
             Self::Method => write!(f, "method"),
             Self::Closure => write!(f, "closure"),
+            Self::Class => write!(f, "class"),
             Self::ImplBlock => write!(f, "impl block"),
             Self::TraitImplBlock => write!(f, "trait impl block"),
             Self::IfBranch => write!(f, "if branch"),

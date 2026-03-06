@@ -7,20 +7,30 @@
 use std::path::Path;
 
 use dupes_core::analyzer::LanguageAnalyzer;
-use dupes_core::code_unit::CodeUnit;
+use dupes_core::code_unit::{CodeUnit, CodeUnitKind};
 use dupes_core::config::AnalysisConfig;
 use dupes_core::node::{BinOpKind, LiteralKind, NodeKind, UnOpKind};
 use dupes_treesitter::TreeSitterAnalyzer;
 use dupes_treesitter::mapping::NodeMapping;
 
-/// Tree-sitter query for extracting Python functions and methods.
+/// Tree-sitter query for extracting Python functions, lambdas, and classes.
 ///
-/// Matches `function_definition` at any depth, so it captures both top-level
-/// functions and methods inside classes.
+/// Matches `function_definition` at any depth (top-level functions and class
+/// methods), `lambda` expressions, and `class_definition` bodies.
 const PYTHON_QUERY: &str = r"
 (function_definition
     name: (identifier) @name
     parameters: (parameters) @parameters
+    body: (block) @body
+) @definition
+
+(lambda
+    parameters: (lambda_parameters)? @parameters
+    body: (_) @body
+) @definition
+
+(class_definition
+    name: (identifier) @name
     body: (block) @body
 ) @definition
 ";
@@ -28,7 +38,9 @@ const PYTHON_QUERY: &str = r"
 /// Python language analyzer backed by tree-sitter.
 ///
 /// Detects duplicate and near-duplicate code in Python source files (`.py`, `.pyi`).
-/// Test functions are identified by the `test_` name prefix (pytest convention).
+/// Extracts functions, lambda expressions, and class definitions as code units.
+/// Test code is identified by the `test_` function name prefix or `Test` class name
+/// prefix (pytest conventions).
 #[derive(Debug)]
 pub struct PythonAnalyzer {
     inner: TreeSitterAnalyzer,
@@ -49,7 +61,15 @@ impl PythonAnalyzer {
             python_mapping(),
         )
         .expect("built-in Python query should be valid")
-        .with_test_detector(|name, _node| name.starts_with("test_"));
+        .with_kind_resolver(|node_kind| match node_kind {
+            "lambda" => CodeUnitKind::Closure,
+            "class_definition" => CodeUnitKind::Class,
+            _ => CodeUnitKind::Function,
+        })
+        .with_test_detector(|name, node| {
+            name.starts_with("test_")
+                || (node.kind() == "class_definition" && name.starts_with("Test"))
+        });
 
         Self { inner }
     }
@@ -91,7 +111,6 @@ impl LanguageAnalyzer for PythonAnalyzer {
 ///
 /// # Not yet covered (intentional omissions for initial implementation)
 ///
-/// - `lambda` — falls through to generic Block normalization (acceptable; not extracted as code units)
 /// - `with_statement` / `try_statement` / `raise_statement` / `assert_statement` —
 ///   fall through to generic recursion (structure is preserved, semantic kind is lost)
 /// - `conditional_expression` (ternary `x if cond else y`) — falls through to Block
@@ -100,7 +119,8 @@ impl LanguageAnalyzer for PythonAnalyzer {
 /// - f-string interpolations — the `string` node is treated as `Literal(Str)`,
 ///   so interpolated expressions inside f-strings are not captured
 /// - `pass_statement` / `ellipsis` — become Opaque leaves (acceptable no-ops)
-/// - Decorator-based test detection (e.g., `@pytest.fixture`) — only name-based `test_` prefix
+/// - Decorator-based test detection (e.g., `@pytest.fixture`) — only name-based `test_`/`Test` prefix
+/// - Lambda test detection — lambdas inside test functions are not tagged as test code
 #[must_use]
 pub fn python_mapping() -> NodeMapping {
     NodeMapping::new()
