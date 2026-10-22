@@ -114,6 +114,25 @@ fn closures_normalized() {
 }
 
 #[test]
+fn async_blocks_preserve_body_structure() {
+    for prefix in ["async", "async move"] {
+        let addition = normalize_code_expr(&format!("{prefix} {{ value + 1 }}"));
+        let multiplication = normalize_code_expr(&format!("{prefix} {{ value * 2 }}"));
+        assert_ne!(addition, multiplication);
+    }
+}
+
+#[test]
+fn async_blocks_normalize_identifiers_and_literal_values() {
+    for prefix in ["async", "async move"] {
+        let first = normalize_code_expr(&format!("{prefix} {{ let result = value + 1; result }}"));
+        let second =
+            normalize_code_expr(&format!("{prefix} {{ let output = input + 42; output }}"));
+        assert_eq!(first, second);
+    }
+}
+
+#[test]
 fn for_loops_normalized() {
     let code1 = "for i in 0..10 { println!(\"hello\") }";
     let code2 = "for j in 0..10 { println!(\"world\") }";

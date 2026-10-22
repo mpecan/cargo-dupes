@@ -246,6 +246,7 @@ pub fn normalize_expr(expr: &syn::Expr, ctx: &mut NormalizationContext) -> Norma
         ),
         syn::Expr::Macro(em) => normalize_macro(&em.mac, ctx),
         syn::Expr::Group(eg) => normalize_expr(&eg.expr, ctx),
+        syn::Expr::Async(ea) => normalize_block(&ea.block, ctx),
         syn::Expr::Unsafe(eu) => normalize_block(&eu.block, ctx),
         syn::Expr::Const(ec) => normalize_block(&ec.block, ctx),
         _ => NormalizedNode::leaf(NodeKind::Opaque),
